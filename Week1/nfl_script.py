@@ -9,11 +9,11 @@ import pandas as pd
 import numpy as np
 pd.options.mode.chained_assignment = None  # default='warn'
 
-iterations = 100000
+iterations = 300000
 
 def find_opponent(data):
-    own = data[5]
-    data = data[4].split('@')
+    own = data[6]
+    data = data[5].split('@')
     opp = data[1].split(' ')
     data[1] = opp[0]
     for x in data:
@@ -77,17 +77,17 @@ def getNames(x):
     n0 = []
     for iden in range(0,len(x)):
         if iden == 0:   
-            n0.append(dk_merge_qb.loc[x[iden]]['Name'])
+            n0.append(dk_merge_qb.loc[x[iden]]['Name + ID'])
         elif iden < 3:
-            n0.append(dk_merge_rb.loc[x[iden]]['Name'])
+            n0.append(dk_merge_rb.loc[x[iden]]['Name + ID'])
         elif iden < 6:
-            n0.append(dk_merge_wr.loc[x[iden]]['Name'])
+            n0.append(dk_merge_wr.loc[x[iden]]['Name + ID'])
         elif iden < 7:
-            n0.append(dk_merge_te.loc[x[iden]]['Name'])
+            n0.append(dk_merge_te.loc[x[iden]]['Name + ID'])
         elif iden < 8:
-            n0.append(dk_merge_flex.loc[x[iden]]['Name'])
+            n0.append(dk_merge_flex.loc[x[iden]]['Name + ID'])
         else:
-            n0.append(dk_pool_def.loc[x[iden]]['Name'])
+            n0.append(dk_pool_def.loc[x[iden]]['Name + ID'])
             
     return n0
 
@@ -202,7 +202,7 @@ passing_df.drop(['AvgPYPG','Total','TD','INT','Yd Pt Est','TD Pt Est','INT Pt Es
 #print(passing_df.head())
 
 dk_pool_qb = dk_pool[dk_pool['Position'] == "QB"]
-dk_pool_qb.drop(['Name + ID', 'ID'],axis=1,inplace=True)
+dk_pool_qb.drop(['ID'],axis=1,inplace=True)
 dk_pool_qb['Opp'] = dk_pool_qb.apply(lambda x: find_opponent(x),axis=1)
 dk_merge_qb = pd.merge(dk_pool_qb,passing_df, how='left', on='Opp')
 dk_merge_qb['TOT'] = dk_merge_qb['AvgPointsPerGame'] + dk_merge_qb['Scale']
@@ -233,7 +233,7 @@ rushing_df.drop(['AvgRYPG','Total','TDpGame','Yd Pt Est','TD Pt Est','Team'],axi
 
 
 dk_pool_rb = dk_pool[dk_pool['Position'] == 'RB']
-dk_pool_rb.drop(['Name + ID', 'ID'],axis=1,inplace=True)
+dk_pool_rb.drop(['ID'],axis=1,inplace=True)
 dk_pool_rb['Opp'] = dk_pool_rb.apply(lambda x: find_opponent(x),axis=1)
 dk_merge_rb = pd.merge(dk_pool_rb,rushing_df, how='left', on='Opp')
 dk_merge_rb['TOT'] = dk_merge_rb['AvgPointsPerGame'] + dk_merge_rb['Scale']
@@ -261,7 +261,7 @@ receiving_df.drop(['Rec','Team','Yd Pt Est','Total','TD Pt Est','Rec Pt Est','Av
 #rec is 1 pt
 
 dk_pool_wr = dk_pool[dk_pool['Position'] == 'WR']
-dk_pool_wr.drop(['Name + ID', 'ID'],axis=1,inplace=True)
+dk_pool_wr.drop(['ID'],axis=1,inplace=True)
 dk_pool_wr['Opp'] = dk_pool_wr.apply(lambda x: find_opponent(x),axis=1)
 dk_merge_wr = pd.merge(dk_pool_wr,receiving_df, how='left', on='Opp')
 dk_merge_wr['TOT'] = dk_merge_wr['AvgPointsPerGame'] + dk_merge_wr['Scale']
@@ -273,7 +273,7 @@ dk_merge_wr.drop(['Game Info', 'TeamAbbrev', 'Roster Position','AvgPointsPerGame
 
 ## TE DATA
 dk_pool_te = dk_pool[dk_pool['Position'] == 'TE']
-dk_pool_te.drop(['Name + ID', 'ID'],axis=1,inplace=True)
+dk_pool_te.drop(['ID'],axis=1,inplace=True)
 dk_pool_te['Opp'] = dk_pool_te.apply(lambda x: find_opponent(x),axis=1)
 dk_merge_te = pd.merge(dk_pool_te,receiving_df, how='left', on='Opp')
 dk_merge_te['TOT'] = dk_merge_te['AvgPointsPerGame'] + dk_merge_te['Scale']
@@ -310,17 +310,20 @@ dk_merge_def['Scale'] = d_scale
 dk_merge_def.drop(['INT','Sck','Rush FUM','Tot TD','Team','INT Pts','Sack Pts','Total','Fum Pts','Pts Scored'],axis=1,inplace=True)
 
 dk_pool_def = dk_pool[dk_pool['Position'] == 'DST']
-dk_pool_def.drop(['Name + ID', 'ID'],axis=1,inplace=True)
+dk_pool_def.drop(['ID'],axis=1,inplace=True)
 dk_pool_def['Opp'] = dk_pool_def.apply(lambda x: find_opponent(x),axis=1)
 dk_pool_def = pd.merge(dk_pool_def, dk_merge_def, how='left',on='Opp')
 dk_pool_def['TOT'] = dk_pool_def['AvgPointsPerGame'] + dk_pool_def['Scale']
 dk_pool_def.drop(['Game Info','TeamAbbrev','Roster Position','AvgPointsPerGame','Scale','Opp'],axis=1,inplace=True)
-#print(dk_pool_def.head())
+print(dk_pool_def)
 
 ## FLEX DATA
 dk_merge_flex = pd.concat([dk_merge_rb,dk_merge_wr,dk_merge_te],ignore_index=True)
 dk_merge_flex.sort_values(by=['TOT'],ascending=False,inplace=True)
 #print(dk_merge_flex)
+
+dk_final = pd.concat([dk_merge_flex, dk_pool_def, dk_merge_qb], ignore_index=True)
+dk_final.to_csv('DK_Final.csv', index = False)
 
 
 ## LINE UP
@@ -344,7 +347,7 @@ while i < iterations:
         maxIter = currentIter
         maxLineup = lineup
     #check if sample is a top tier sample
-    if currentIter > 190 and constraint(lineup) and duplicates(getNames(lineup)) == False:
+    if currentIter > 195 and constraint(lineup) and duplicates(getNames(lineup)) == False:
         #add players to top tier dataframe
         topTierData = getNames(lineup)
         topTierData.append(currentIter)
