@@ -348,7 +348,7 @@ while i < iterations:
         maxIter = currentIter
         maxLineup = lineup
     #check if sample is a top tier sample
-    if currentIter > 170 and constraint(lineup) and duplicates(getNames(lineup)) == False:
+    if currentIter > 185 and constraint(lineup) and duplicates(getNames(lineup)) == False:
         #add players to top tier dataframe
         topTierData = getNames(lineup)
         topTierData.append(currentIter)
