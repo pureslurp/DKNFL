@@ -9,7 +9,7 @@ import pandas as pd
 import numpy as np
 pd.options.mode.chained_assignment = None  # default='warn'
 
-iterations = 500000
+iterations = 100000
 
 def find_opponent(data):
     own = data[6]
@@ -88,8 +88,24 @@ def getNames(x):
             n0.append(dk_merge_flex.loc[x[iden]]['Name + ID'])
         else:
             n0.append(dk_pool_def.loc[x[iden]]['Name + ID'])
-            
     return n0
+
+def getID(x):
+    i0 = []
+    for iden in range(0,len(x)):
+        if iden == 0:   
+            i0.append(dk_merge_qb[dk_merge_qb['Name + ID'] == x[iden]].index)
+        elif iden < 3:
+            i0.append(dk_merge_rb[dk_merge_rb['Name + ID'] == x[iden]].index)
+        elif iden < 6:
+            i0.append(dk_merge_wr[dk_merge_wr['Name + ID'] == x[iden]].index)
+        elif iden < 7:
+            i0.append(dk_merge_te[dk_merge_te['Name + ID'] == x[iden]].index)
+        elif iden < 8:
+            i0.append(dk_merge_flex[dk_merge_flex['Name + ID'] == x[iden]].index)
+        else:
+            i0.append(dk_pool_def[dk_pool_def['Name + ID'] == x[iden]].index)
+    return i0
 
 #Calculate total points of a lineup
 def objective(x):
@@ -132,12 +148,46 @@ def constraint(x):
         valid = False
     return valid
 
+def get_salary(x):
+    s0 = []
+    for iden in range(0,len(x)):
+        if iden == 0:   
+            s0.append(float(dk_merge_qb.loc[x[iden]]['Salary']))
+        elif iden < 3:
+            s0.append(float(dk_merge_rb.loc[x[iden]]['Salary']))
+        elif iden < 6:
+            s0.append(float(dk_merge_wr.loc[x[iden]]['Salary']))
+        elif iden < 7:
+            s0.append(float(dk_merge_te.loc[x[iden]]['Salary'])) 
+        elif iden < 8:
+            s0.append(float(dk_merge_flex.loc[x[iden]]['Salary']))
+        else:
+            s0.append(float(dk_pool_def.loc[x[iden]]['Salary']))
+    return sum(s0)
+
 def duplicates(x):
     if len(x) != len(set(x)):
         duplicates = True
     else:
         duplicates = False
     return duplicates
+
+def value(data):
+    value = float(data[3])/float(data[2])
+    return value
+
+def optimize(df, salary, pos, budget):
+    if pos != 'FLEX':
+        df = df[df['Position'] == pos]
+    else:
+        df = df[(df['Position'] == 'RB') | (df['Position'] == 'WR') | (df['Position'] == 'TE')]
+        
+    upper_bound = int(salary+(min(budget,500)))
+    lower_bound = int(salary) - 500
+    df.sort_values(by=['Value'],ascending = False, inplace=True)
+    window = df[(df['Salary'] <= upper_bound) & (df['Salary'] > lower_bound)]
+    #print(window)
+    return window.iloc[0]['Name + ID']
     
 
 team_dict = {'TB' : 'Buccaneers',
@@ -324,6 +374,7 @@ dk_merge_flex.sort_values(by=['TOT'],ascending=False,inplace=True)
 
 dk_final = pd.concat([dk_merge_flex, dk_pool_def, dk_merge_qb], ignore_index=True)
 dk_final.drop(['Name'],axis=1,inplace=True)
+dk_final['Value'] = dk_final.apply(lambda x: value(x),axis=1)
 dk_final.to_csv('DK_Final.csv', index = False)
 
 
@@ -334,6 +385,8 @@ i = 0
 k = 0
 maxIter = 0
 topTierLineup = pd.DataFrame(columns=['QB','RB','RB','WR','WR','WR','TE','FLEX','DST','TOT'])
+OptimizedLineup = pd.DataFrame(columns=['QB','RB','RB','WR','WR','WR','TE','FLEX','DST','TOT'])
+
 
 #main loop
 while i < iterations:
@@ -348,7 +401,7 @@ while i < iterations:
         maxIter = currentIter
         maxLineup = lineup
     #check if sample is a top tier sample
-    if currentIter > 185 and constraint(lineup) and duplicates(getNames(lineup)) == False:
+    if currentIter > 180 and constraint(lineup) and duplicates(getNames(lineup)) == False:
         #add players to top tier dataframe
         topTierData = getNames(lineup)
         topTierData.append(currentIter)
@@ -361,8 +414,71 @@ while i < iterations:
     #counter
     if i % 1000 == 0:
         print(i)
-
-print(maxIter)
-print(getNames(maxLineup))
-topTierLineup.to_csv('NFL_DK_LineUps.csv', index = False)
+        
+# optimize
+for index, row in topTierLineup.iterrows():
+    print(index)
+    maxNames = [row[0],row[1],row[2],row[3],row[4],row[5],row[6],row[7],row[8]]
+    ID = getID(maxNames)
+    # print(get_salary(getID(maxNames)))
+    # print(maxNames)
+    # print(maxIter)
+    
+    qb_salary = dk_merge_qb.loc[ID[0]]['Salary']
+    rb1_salary = dk_merge_rb.loc[ID[1]]['Salary']
+    rb2_salary = dk_merge_rb.loc[ID[2]]['Salary']
+    wr1_salary = dk_merge_wr.loc[ID[3]]['Salary']
+    wr2_salary = dk_merge_wr.loc[ID[4]]['Salary']
+    wr3_salary = dk_merge_wr.loc[ID[5]]['Salary']
+    te_salary = dk_merge_te.loc[ID[6]]['Salary']
+    flex_salary = dk_merge_flex.loc[ID[7]]['Salary']
+    dst_salary = dk_pool_def.loc[ID[8]]['Salary']
+    
+    budget = 50000 - get_salary(ID)
+    
+    if maxNames[0] != optimize(dk_final, qb_salary, 'QB', budget):
+        maxNames[0] = optimize(dk_final, qb_salary, 'QB', budget)
+        budget = 50000 - get_salary(getID(maxNames))
+        
+    if maxNames[1] != optimize(dk_final, rb1_salary, 'RB', budget) and maxNames[2] != optimize(dk_final, rb1_salary, 'RB',budget):
+        maxNames[1] = optimize(dk_final, rb1_salary, 'RB', budget)
+        budget = 50000 - get_salary(getID(maxNames))
+        
+    if maxNames[1] != optimize(dk_final, rb2_salary, 'RB', budget) and maxNames[2] != optimize(dk_final, rb2_salary, 'RB', budget):
+        maxNames[2] = optimize(dk_final, rb2_salary, 'RB', budget)
+        budget = 50000 - get_salary(getID(maxNames))
+        
+    if maxNames[3] != optimize(dk_final, wr1_salary, 'WR', budget) and maxNames[4] != optimize(dk_final, wr1_salary, 'WR', budget) and maxNames[5] != optimize(dk_final, wr1_salary, 'WR', budget):
+        maxNames[3] = optimize(dk_final, wr1_salary, 'WR', budget)
+        budget = 50000 - get_salary(getID(maxNames))
+        
+    if maxNames[3] != optimize(dk_final, wr2_salary, 'WR', budget) and maxNames[4] != optimize(dk_final, wr2_salary, 'WR', budget) and maxNames[5] != optimize(dk_final, wr2_salary, 'WR', budget):
+        maxNames[4] = optimize(dk_final, wr2_salary, 'WR', budget)
+        budget = 50000 - get_salary(getID(maxNames))
+        
+    if maxNames[3] != optimize(dk_final, wr3_salary, 'WR', budget) and maxNames[4] != optimize(dk_final, wr3_salary, 'WR', budget) and maxNames[5] != optimize(dk_final, wr3_salary, 'WR', budget):
+        maxNames[5] = optimize(dk_final, wr3_salary, 'WR', budget)
+        budget = 50000 - get_salary(getID(maxNames))
+        
+    if maxNames[6] != optimize(dk_final, te_salary, 'TE', budget):
+        maxNames[6] = optimize(dk_final, te_salary, 'TE', budget)
+        budget = 50000 - get_salary(getID(maxNames))
+        
+    if maxNames[3] != optimize(dk_final, flex_salary, 'FLEX', budget) and maxNames[4] != optimize(dk_final, flex_salary, 'FLEX', budget) and maxNames[5] != optimize(dk_final, flex_salary, 'FLEX', budget) and maxNames[1] != optimize(dk_final, flex_salary, 'FLEX', budget) and maxNames[2] != optimize(dk_final, flex_salary, 'FLEX', budget) and maxNames[6] != optimize(dk_final, flex_salary, 'FLEX', budget):
+        maxNames[7] = optimize(dk_final, flex_salary, 'FLEX', budget)
+        budget = 50000 - get_salary(getID(maxNames))
+        
+    if maxNames[8] != optimize(dk_final, dst_salary, 'DST', budget):
+        maxNames[8] = optimize(dk_final, dst_salary, 'DST', budget)
+        budget = 50000 - get_salary(getID(maxNames))
+    
+    # print(objective(getID(maxNames)))
+    # print(maxNames)
+    # print(get_salary(getID(maxNames)))
+    newTotal = objective(getID(maxNames))
+    maxNames.append(newTotal)
+    OptimizedLineup.loc[index] = maxNames
+    
+#print(getNames(maxLineup))
+OptimizedLineup.to_csv('NFL_DK_LineUps.csv', index = False)
 
