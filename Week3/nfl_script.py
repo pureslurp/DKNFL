@@ -9,7 +9,7 @@ import pandas as pd
 import numpy as np
 pd.options.mode.chained_assignment = None  # default='warn'
 
-iterations = 100000
+iterations = 500000
 
 def find_opponent(data):
     own = data[6]
@@ -402,7 +402,7 @@ while i < iterations:
         maxIter = currentIter
         maxLineup = lineup
     #check if sample is a top tier sample
-    if currentIter > 180 and constraint(lineup) and duplicates(getNames(lineup)) == False:
+    if currentIter > 185 and constraint(lineup) and duplicates(getNames(lineup)) == False:
         #add players to top tier dataframe
         topTierData = getNames(lineup)
         topTierData.append(currentIter)
