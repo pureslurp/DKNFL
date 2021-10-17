@@ -9,7 +9,7 @@ import pandas as pd
 import numpy as np
 pd.options.mode.chained_assignment = None  # default='warn'
 
-iterations = 300000
+iterations = 500000
 
 def find_opponent(data):
     own = data[6]
@@ -323,6 +323,7 @@ dk_merge_flex.sort_values(by=['TOT'],ascending=False,inplace=True)
 #print(dk_merge_flex)
 
 dk_final = pd.concat([dk_merge_flex, dk_pool_def, dk_merge_qb], ignore_index=True)
+dk_final.sort_values(by=['Salary'],ascending=False,inplace=True)
 dk_final.to_csv('DK_Final.csv', index = False)
 
 
