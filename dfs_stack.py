@@ -513,7 +513,7 @@ def main(argv):
                            "--test", 
                            type=str, 
                            help="Predict future week or check past week", 
-                           choices="forward or backtest", 
+                           choices=("forward", "backtest"), 
                            default="forward")
     args = argParser.parse_args()
     WEEK = args.week
