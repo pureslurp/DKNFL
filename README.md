@@ -5,9 +5,11 @@ There are 3 scripts needed to run predictions, in order. Each script requires th
 3. dfs_stack.py
 
 Example of running full prediction for Week 12
-1. `python3 parse_odds.py 12`
-2. `python3 nfl_dfs.py 12`
-3. `python3 dfs_stack.py 12`
+1. Create a folder in 2023 for the current week,"2023/WEEK12"
+2. `python3 parse_odds.py 12`
+3. `python3 nfl_dfs.py 12`
+4. Download DKSalaries from DraftKings and put them in the folder created with the naming convention "DKSalaries-Week12
+5. `python3 dfs_stack.py 12`
 
 The last script will output 24 lineups ranked from best to worst, dk_lineups_week12.cvs.
 
