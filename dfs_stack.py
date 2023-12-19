@@ -1,0 +1,566 @@
+import pandas as pd
+import random
+import numpy as np
+import sys
+import argparse
+
+team_dict = {'TB' : 'Buccaneers',
+             'SEA' : 'Seahawks',
+             'SF' : '49ers',
+             'LAC' : 'Chargers',
+             'PIT' : 'Steelers',
+             'ARI' : 'Cardinals',
+             'PHI' : 'Eagles',
+             'NYJ' : 'Jets',
+             'NYG' : 'Giants',
+             'NO' : 'Saints',
+             'NE' : 'Patriots',
+             'MIN' : 'Vikings',
+             'MIA' : 'Dolphins',
+             'LV' : 'Raiders',
+             'LAR' : 'Rams',
+             'KC' : 'Chiefs',
+             'JAX' : 'Jaguars',
+             'IND' : 'Colts',
+             'TEN' : 'Titans',
+             'GB' : 'Packers',
+             'DET' : 'Lions',
+             'DEN' : 'Broncos',
+             'DAL' : 'Cowboys',
+             'CLE' : 'Browns',
+             'CIN' : 'Bengals',
+             'CHI' : 'Bears',
+             'CAR' : 'Panthers',
+             'BUF' : 'Bills',
+             'BAL' : 'Ravens',
+             'ATL' : 'Falcons',
+             'WAS' : 'Commanders',
+             'HOU' : 'Texans'
+    }
+
+city_to_team = {
+             'Tampa Bay' : 'Buccaneers',
+             'Seattle' : 'Seahawks',
+             'San Francisco' : '49ers',
+             'LA Chargers' : 'Chargers',
+             'Pittsburgh' : 'Steelers',
+             'Arizona' : 'Cardinals',
+             'Philadelphia' : 'Eagles',
+             'NY Jets' : 'Jets',
+             'NY Giants' : 'Giants',
+             'New Orleans' : 'Saints',
+             'New England' : 'Patriots',
+             'Minnesota' : 'Vikings',
+             'Miami' : 'Dolphins',
+             'Las Vegas' : 'Raiders',
+             'LA Rams' : 'Rams',
+             'Kansas City' : 'Chiefs',
+             'Jacksonville' : 'Jaguars',
+             'Indianapolis' : 'Colts',
+             'Tennessee' : 'Titans',
+             'Green Bay' : 'Packers',
+             'Detroit' : 'Lions',
+             'Denver' : 'Broncos',
+             'Dallas' : 'Cowboys',
+             'Cleveland' : 'Browns',
+             'Cincinnati' : 'Bengals',
+             'Chicago' : 'Bears',
+             'Carolina' : 'Panthers',
+             'Buffalo' : 'Bills',
+             'Baltimore' : 'Ravens',
+             'Atlanta' : 'Falcons',
+             'Washington' : 'Commanders',
+             'Houston' : 'Texans'
+}
+class Player:
+    def __init__(self, player_df):
+        try:
+            self.name = player_df["Name + ID"].iloc[0]
+            self.position = player_df["Position"].iloc[0]
+            self.salary = player_df["Salary"].iloc[0]
+            self.score = player_df["DFS Total"].iloc[0]
+            self.game_info = player_df["Game Info"].iloc[0]
+            self.team = player_df["TeamAbbrev"].iloc[0]
+        except:
+            self.name = player_df["Name + ID"]
+            self.position = player_df["Position"]
+            self.salary = player_df["Salary"]
+            self.score = player_df["DFS Total"]
+            self.game_info = player_df["Game Info"]
+            self.team = player_df["TeamAbbrev"]
+
+    def get_value(self):
+        return self.score / self.salary * 1000
+    
+    def get_opponent(self):
+        game_info = self.game_info.split(" ")[0].split("@")
+        if game_info[0] == self.team:
+            return game_info[1]
+        else:
+            return game_info[0]
+        
+    def __str__(self):
+        return f'{self.name}'
+
+class LineUp:
+    def __init__(self, qb: Player, rb1: Player, rb2: Player, wr1: Player, wr2:Player, wr3: Player, te: Player, flex: Player, dst:Player):
+        self.players = {"QB": qb,
+             "RB1" : rb1,
+             "RB2" : rb2,
+             "WR1" : wr1,
+             "WR2" : wr2,
+             "WR3" : wr3,
+             "TE" : te,
+             "FLEX" : flex,
+             "DST" : dst
+            }
+    
+    def get_salary(self):
+        salary = 0
+        for key in self.players:
+            salary += self.players[key].salary
+        return salary
+        
+    def get_total(self):
+        total = 0
+        for key in self.players:
+            total += self.players[key].score
+        return total
+    def duplicates(self):
+        elem = []
+        for key in self.players:
+            elem.append(self.players[key].name)
+        if len(elem) == len(set(elem)):
+            return False
+        else:
+            return True
+    def to_dict(self):
+        self.players.update(
+            {"Salary" : self.get_salary(),
+             "TotalPoints" : self.get_total()})
+        return self.players
+    
+    def __len__(self):
+        return 9
+        
+    @property
+    def names(self):
+        names = []
+        for key in self.players:
+            names.append(self.players[key].name)
+        return names
+    
+    def __str__(self):
+        return f'Lineup: {self.players}'
+
+def get_list_of_teams(df):
+    teamList = df['TeamAbbrev'].values.tolist()
+    res_teamList = []
+    [res_teamList.append(x) for x in teamList if x not in res_teamList]
+    return res_teamList
+
+def qb_wr_stack(df, team):
+    '''given a qb, find wr stacks points and salary'''
+    new_df = df[df['TeamAbbrev'] == team]
+    new_df = new_df[(new_df["Position"] == "QB") | (new_df["Position"] == "WR") | (new_df["Position"] == "TE")]
+    return new_df
+
+
+def highest_stack(stack, attr="point", limit=16400):
+    if attr == 'value':
+        col = "Value"
+    else:
+        col = "DFS Total"
+    qb = stack[stack["Position"] == "QB"].iloc[0]
+    wrs = stack[(stack["Position"] == "WR") | (stack["Position"] == "TE")]
+    value = 0
+    salary = 0
+    for index, wr in wrs.iterrows():
+        sal = float(qb["Salary"]) + float(wr["Salary"])
+        if sal >= limit:
+            continue
+        else:
+            score = float(qb[col]) + float(wr[col])
+            if score > value:
+                value = score
+                player = wr["Name"]
+                salary = int(qb["Salary"]) + int(wr["Salary"])
+    new_df = stack[(stack["Name"] == qb["Name"]) | (stack["Name"] == player)]
+    return new_df
+
+
+def stack_sal(stack, attr="point"):
+    if len(stack) != 2:
+        raise ValueError("Stack must be 2")
+    if attr == 'value':
+        col = "Value"
+    else:
+        col = "DFS Total"
+    score = sum(stack[col])
+    sal = sum(stack["Salary"])
+    return score, sal
+
+def find_best_stack(df, attr="point"):
+    highestTotal = 0
+    for team in get_list_of_teams(df):
+        high_stack = highest_stack(qb_wr_stack(df, team), attr)
+        if int(high_stack[high_stack["Position"] == "QB"]["Salary"]) < 5200:
+            continue
+        else:
+            score, _ = stack_sal(highest_stack(qb_wr_stack(df, team), attr), attr)
+        if score > highestTotal:
+            highestTotal = score
+            bestStack = highest_stack(qb_wr_stack(df, team), attr)
+    return bestStack
+
+def find_2nd_best_stack(df, best_stack, attr="point"):
+    highestTotal = 0
+    best_stack_points = find_best_stack(df)
+    best_stack_value = find_best_stack(df, attr="value")
+    for team in get_list_of_teams(df):
+        stack_entry = highest_stack(qb_wr_stack(df, team), attr)
+        if int(stack_entry[stack_entry["Position"] == "QB"]["Salary"]) < 5200:
+            continue
+        else:
+            score, sal = stack_sal(stack_entry, attr)
+            stack_check_points = stack_entry[stack_entry['Position'] == "QB"].equals(best_stack_points[best_stack_points["Position"] == "QB"])
+            stack_check_value = stack_entry[stack_entry['Position'] == "QB"].equals(best_stack_value[best_stack_value["Position"] == "QB"])
+            if score > highestTotal and stack_check_points is False and stack_check_value is False:
+                highestTotal = score
+                best2ndStack = highest_stack(qb_wr_stack(df, team), attr)
+    return best2ndStack
+
+def fix_player_name(name):
+    if name == "DJ Chark":
+        return "DJ Chark Jr."
+    else:
+        return name.strip()
+
+def position_df(df, pos):
+    if pos != "FLEX":
+        new_df = df[df["Position"] == pos]
+        new_df.reset_index(drop=True, inplace=True)
+    else:
+        new_df = df[(df["Position"] == "WR") | (df["Position"] == "RB")]
+        new_df.reset_index(drop=True, inplace=True)
+    return new_df
+
+def find_name(data):
+    '''Make NFL.com team naming the same as DK team naming'''
+    data = data.split('  ')
+    return data[1]
+
+def points_for(data):
+    '''find each teams average points for'''
+    # 1 – 6 Points Allowed +7 Pts
+    # 7 – 13 Points Allowed +4 Pts
+    # 14 – 20 Points Allowed +1 Pt
+    # 21 – 27 Points Allowed +0 Pts
+    # 28 – 34 Points Allowed -1 Pt
+    # 35+ Points Allowed -4 Pts
+    if data < 7:
+        points = 7
+    elif data > 6 and data < 14:
+        points = 4
+    elif data > 13 and data < 21:
+        points = 1
+    elif data > 20 and data < 28:
+        points = 0
+    elif data > 27 and data < 35:
+        points = -1
+    else:
+        points = -4
+    return points
+
+def get_bye_week(team):
+    '''Find each teams bye week'''
+    bye_dict = {
+        'Commanders' : 14,
+        'Buccaneers' : 5,
+        'Seahawks' : 5,
+        '49ers' : 9,
+        'Chargers' : 5,
+        'Steelers' : 6,
+        'Cardinals' : 14,
+        'Eagles' : 10,
+        'Jets' : 7,
+        'Giants' : 13,
+        'Saints' : 11,
+        'Patriots' : 11,
+        'Vikings' : 13,
+        'Dolphins' : 10,
+        'Raiders' : 13,
+        'Rams' : 10,
+        'Chiefs' : 10,
+        'Jaguars' : 9,
+        'Colts' : 11,
+        'Texans' : 7,
+        'Titans' : 7,
+        'Packers' : 6,
+        'Lions' : 9,
+        'Broncos' : 9,
+        'Cowboys' : 7,
+        'Browns' : 5,
+        'Bengals' : 7,
+        'Bears' : 13,
+        'Panthers' : 7,
+        'Bills' : 13,
+        'Ravens' : 13,
+        'Falcons' : 11
+        }
+    return bye_dict[team]
+
+def calc_df_INT_Pts(data, WEEK):
+    '''calculate defensive INT per game as DFS points'''
+    if get_bye_week(find_name(data[0])) < WEEK:
+        Int_Pt_Est = (data[1] * 2) / (WEEK - 2)
+    else:
+        Int_Pt_Est = (data[1] * 2) / (WEEK)
+    return Int_Pt_Est 
+
+def calc_Sack_Pts(data, WEEK):
+    '''calculate sacks per game as DFS points'''
+    if get_bye_week(find_name(data[0])) < WEEK:
+        Sck_Pt_Est = (data[2]) / (WEEK - 2)
+    else:
+        Sck_Pt_Est = (data[2]) / (WEEK)
+    return Sck_Pt_Est   
+
+def calc_Fum_Pts(data, WEEK):
+    '''calculate fumbles per game as DFS points'''
+    if get_bye_week(find_name(data[0])) < WEEK:
+        Fum_Pt_Est = (data[3] * 2) / (WEEK - 2)
+    else:
+        Fum_Pt_Est = (data[3] * 2) / (WEEK)
+    return Fum_Pt_Est 
+
+
+def generate_line_up_from_stack(df, stack, NoL=6):
+    print(stack)
+    dkRoster = pd.DataFrame(columns=("QB", "RB1", "RB2", "WR1", "WR2", "WR3", "TE", "FLEX", "DST", "Salary", "TotalPoints"))
+    highest_points = 0
+    qb = Player(stack[stack["Position"] == "QB"])
+    opp_team = qb.get_opponent()
+    if len(stack[stack["Position"] == "WR"]) == 1:
+        wr1 = Player(stack[stack["Position"] == "WR"])
+        te_df = position_df(df, "TE")
+        te = Player(te_df.iloc[[random.randint(0, len(te_df) - 1)]])
+    else:
+        te = Player(stack[stack["Position"] == "TE"])
+        wr_df = position_df(df, "WR")
+        wr1 = Player(wr_df.iloc[[random.randint(0, len(wr_df) - 1)]])
+    rb_df = position_df(df, "RB")
+    wr_df = position_df(df, "WR")
+    flex_df = position_df(df, "FLEX")
+    dst_df = position_df(df, "DST")
+    dst_df = dst_df[dst_df["TeamAbbrev"] != opp_team]
+    for x in range(200000):
+        rb1 = Player(rb_df.iloc[[random.randint(0, len(rb_df) - 1)]])
+        rb2 = Player(rb_df.iloc[[random.randint(0, len(rb_df) - 1)]])
+        wr2 = Player(wr_df.iloc[[random.randint(0, len(wr_df) - 1)]])
+        wr3 = Player(wr_df.iloc[[random.randint(0, len(wr_df) - 1)]])
+        flex = Player(flex_df.iloc[[random.randint(0, len(flex_df) - 1)]])
+        dst = Player(dst_df.iloc[[random.randint(0, len(dst_df) - 1)]])
+        lineup = LineUp(qb, rb1, rb2, wr1, wr2, wr3, te, flex, dst)
+        if lineup.get_salary() <= 50000 and (lineup.get_total() > highest_points) and not lineup.duplicates():
+            dkRoster.loc[len(dkRoster)] = lineup.to_dict()
+            dkRoster.sort_values(by="TotalPoints", ascending=False, inplace=True, ignore_index=True)
+            dkRoster = dkRoster.iloc[0:NoL]
+            if len(dkRoster) == (NoL + 1):
+                highest_points = float(dkRoster.iloc[NoL]["TotalPoints"])
+        if x % 10000 == 0:
+            print(x)
+    dkRoster = optimize_lineups(dkRoster, stack, df)
+    return dkRoster
+
+def optimize_lineups(lineups, stack, df):
+    qb = Player(stack[stack["Position"] == "QB"])
+    wrt = Player(stack[stack["Position"] != "QB"])
+    for index, lineup in lineups.iterrows():
+        lineup_obj = LineUp(Player(df[df["Name + ID"] == lineup["QB"].name]), Player(df[df["Name + ID"] == lineup["RB1"].name]),  Player(df[df["Name + ID"] == lineup["RB2"].name]),  Player(df[df["Name + ID"] == lineup["WR1"].name]),  Player(df[df["Name + ID"] == lineup["WR2"].name]), Player(df[df["Name + ID"] == lineup["WR3"].name]), Player(df[df["Name + ID"] == lineup["TE"].name]), Player(df[df["Name + ID"] == lineup["FLEX"].name]),  Player(df[df["Name + ID"] == lineup["DST"].name]))
+        for pos, player in lineup_obj.players.items():
+            budget = lineup_obj.get_salary()
+            if player.name != qb.name and player.name != wrt.name and pos != "DST":
+                df_filt = df[df["Roster Position"].str.contains(pos)==True]
+                df_filt = df_filt[(df_filt["Salary"] < player.salary + min(500, 50000-budget)) & (df_filt["Salary"] > player.salary - 500)] 
+                for _, r2 in df_filt.iterrows():
+                    new_player = Player(r2)
+                    if new_player.score > lineup_obj.players[pos].score and new_player.name not in lineup_obj.names:
+                        print(f"Replacing {lineup_obj.players[pos].name} with {new_player.name}" )
+                        lineup_obj.players[pos] = new_player
+        lineup["TotalPoints"] = lineup_obj.get_total()
+        if lineup["TotalPoints"] in lineups["TotalPoints"].values:
+            print("duplicate")
+            continue
+        else:
+            lineups.iloc[index] = list(lineup_obj.to_dict().values())
+    print(f"After: {lineups}")
+    return lineups
+            
+def get_salary(df, player):
+    return int(df[df["Name + ID"] == player]["Salary"])
+
+def get_total_points(df, lineup):
+    total = 0
+    for _, value in lineup.iteritems():
+        if type(value) != float:
+            total += float(df[df["Name + ID"] == value]["DFS Total"])
+    return total
+
+def get_lineup_budget(df, lineup):
+    budget = 0
+    for _, value in lineup.iteritems():
+        if type(value) != float:
+            budget += get_salary(df, value)
+    return budget
+
+
+def find_opponent(data):
+    '''Find who player is playing against from DK Salaries'''
+    #(TODO) Fix this shit
+    own = data[6]
+    data = data[5].split('@')
+    if len(data) > 1:
+        opp = data[1].split(' ')
+        data[1] = opp[0]
+        for x in data:
+            if x == own:
+                pass
+            else:
+                opponent = x
+        return team_dict[opponent]
+    else:
+        print('invalid data')
+
+def fix_name(data):
+    if data == "Travis Etienne":
+        return "Travis Etienne Jr."
+    elif data == "Michael Pittman":
+        return "Michael Pittman Jr."
+    elif data == "Kenneth Walker":
+        return "Kenneth Walker III"
+    elif data == "Jeff Wilson":
+        return "Jeff Wilson Jr."
+    elif data == "Brian Robinson":
+        return "Brian Robinson Jr."
+    elif data == "Odell Beckham":
+        return "Odell Beckham Jr."
+    elif data == "Gardner Minshew":
+        return "Gardner Minshew II"
+    elif data == "Melvin Gordon":
+        return "Melvin Gordon III"
+    elif data == "Tony Jones":
+        return "Tony Jones Jr."
+    elif data == "Pierre Strong":
+        return "Pierre Strong Jr."
+    elif data == "Larry Rountree":
+        return "Larry Rountree III"
+    else:
+        return data
+    
+def defense(dk_pool, WEEK):
+    nfl_passing_offense = pd.read_html('https://www.nfl.com/stats/team-stats/offense/passing/2023/reg/all')
+    nfl_rushing_offense = pd.read_html('https://www.nfl.com/stats/team-stats/offense/rushing/2023/reg/all')
+    nfl_scoring_offense = pd.read_html('https://www.nfl.com/stats/team-stats/offense/scoring/2023/reg/all')
+    nfl_ppg = pd.read_html("https://www.teamrankings.com/nfl/stat/points-per-game")
+
+    d_scale = np.linspace(-5, 5, 32)
+
+    ## DEF DATA
+    pass_offense = nfl_passing_offense[0]
+    rush_offense = nfl_rushing_offense[0]
+    scoring_offense = nfl_scoring_offense[0]
+    ppg = nfl_ppg[0]
+    #sack 1 pt
+    #int 2 pt
+    #fum 2 pt
+
+    pass_offense.drop(['Att','Cmp','Cmp %','Yds/Att','Pass Yds','Rate','TD','1st','1st%','20+','40+','Lng','SckY'],axis=1,inplace=True)
+    rush_offense.drop(['Att','Rush Yds','20+','40+','Lng','YPC','TD','Rush 1st','Rush 1st%'],axis=1,inplace=True)
+    scoring_offense.drop(['Rsh TD','Rec TD','2-PT'],axis=1,inplace=True)
+    dk_merge_def = pd.merge(pass_offense,rush_offense,how='left',on='Team')
+    dk_merge_def = pd.merge(dk_merge_def,scoring_offense,how='left',on='Team')
+    ppg["Opp"] = ppg["Team"].apply(lambda x: city_to_team[x])
+    ppg.drop(["Team", 'Last 3','Last 1','Home', "Away", "2022"],axis=1,inplace=True)
+    dk_merge_def['Opp'] = dk_merge_def['Team'].apply(lambda x: find_name(x))
+    dk_merge_def = pd.merge(dk_merge_def,ppg,how='left',on='Opp')
+    dk_merge_def['INT Pts'] = dk_merge_def.apply(lambda x: calc_df_INT_Pts(x, WEEK),axis=1)
+    dk_merge_def['Sack Pts'] = dk_merge_def.apply(lambda x: calc_Sack_Pts(x, WEEK),axis=1)
+    dk_merge_def['Fum Pts'] = dk_merge_def.apply(lambda x: calc_Fum_Pts(x, WEEK),axis=1)
+    dk_merge_def['Pts Scored'] = dk_merge_def["2023"].apply(lambda x: points_for(x))
+    dk_merge_def['Total'] = dk_merge_def['INT Pts'] + dk_merge_def['Sack Pts'] + dk_merge_def['Fum Pts'] + dk_merge_def['Pts Scored']
+    dk_merge_def.sort_values(by=['Total'],ascending=True,inplace=True)
+    dk_merge_def['Scale'] = d_scale
+    print(dk_merge_def)
+    dk_merge_def.drop(['INT','Sck','Rush FUM','Tot TD','Team','INT Pts','Sack Pts','Total','2023','Fum Pts','Pts Scored'],axis=1,inplace=True)
+    
+    dk_pool_def = dk_pool[dk_pool['Position'] == 'DST']
+    dk_pool_def.drop(['ID'],axis=1,inplace=True)
+    dk_pool_def['Opp'] = dk_pool_def.apply(lambda x: find_opponent(x),axis=1)
+    dk_pool_def = pd.merge(dk_pool_def, dk_merge_def, how='left',on='Opp')
+    dk_pool_def['DFS Total'] = ((dk_pool_def['AvgPointsPerGame']/dk_pool_def['AvgPointsPerGame'].max()) * 8) + dk_pool_def['Scale']
+    print(dk_pool_def)
+    dk_pool_def.to_csv('dk_defense.csv', index = False)
+    dk_pool_def.drop(['Game Info','TeamAbbrev','AvgPointsPerGame','Scale','Opp'],axis=1,inplace=True)
+    
+    return dk_pool_def[["Name", "DFS Total"]]
+
+
+
+def main(argv):
+    argParser = argparse.ArgumentParser()
+    argParser.add_argument("week", type=int, help="NFL Week")
+    argParser.add_argument("-t", 
+                           "--test", 
+                           type=str, 
+                           help="Predict future week or check past week", 
+                           choices="forward or backtest", 
+                           default="forward")
+    args = argParser.parse_args()
+    WEEK = args.week
+    path = f'2023/Week{WEEK}/'
+    csv = f'{path}/DKSalaries-Week{WEEK}.csv'
+    dk_pool = pd.read_csv(csv)
+
+    if args.test == "forward":
+        dk_stat = pd.read_csv(f"{path}NFL_PROJ_DFS_WEEK{WEEK}.csv")
+    else:
+        dk_stat = pd.read_csv(f"{path}box_score_debug_week_{WEEK}.csv")
+
+    dk_stat["Name"] = dk_stat["Name"].apply(lambda x: fix_name(x))
+    dk_defense = defense(dk_pool, WEEK)
+    dk_stat = pd.concat([dk_stat, dk_defense], ignore_index=True)
+    dfMain = pd.merge(dk_pool,dk_stat,how='left',on='Name')
+    dfMain['DFS Total'] = dfMain['DFS Total'].replace('', np.nan)
+    dfMain.dropna(subset=['DFS Total'], inplace=True)
+    dfMain.to_csv(f"{path}debug.csv")
+    dfMain_DEF = dfMain[dfMain["Position"] == "DST"]
+    dfMain_Players = dfMain[dfMain["Position"] != "DST"]
+    dfMain_QB = dfMain[dfMain["Position"] == "QB"]
+    dfMain_Players_noTEnoQB = dfMain_Players[(dfMain_Players["Position"] != "TE") & (dfMain_Players["Position"] != "QB")]
+    dfMain_Players_TE = dfMain_Players[dfMain_Players["Position"] == "TE"]
+    dfMain_Players_TE = dfMain_Players_TE[dfMain_Players_TE["Salary"] > 2400]
+    dfMain_Players_noTEnoQB = dfMain_Players_noTEnoQB[dfMain_Players_noTEnoQB["Salary"] > 3100]
+    frames = [dfMain_QB, dfMain_Players_TE, dfMain_DEF, dfMain_Players_noTEnoQB]
+    dfMain = pd.concat(frames)
+    dfMain.drop(["AvgPointsPerGame"],axis=1, inplace=True)
+    dfMain["Value"] = (dfMain["DFS Total"] / dfMain["Salary"]) * 1000
+    best_stack_points = find_best_stack(dfMain)
+    best_stack_value = find_best_stack(dfMain, attr="value")
+    dk_lineup_points = generate_line_up_from_stack(dfMain, best_stack_points)
+    print(dk_lineup_points)
+    dk_lineup_points_2nd = generate_line_up_from_stack(dfMain, find_2nd_best_stack(dfMain, best_stack_points))
+    dk_lineup_points_comb = pd.concat([dk_lineup_points, dk_lineup_points_2nd])
+    print(dk_lineup_points_comb)
+    dk_lineup_value = generate_line_up_from_stack(dfMain, best_stack_value)
+    dk_lineup_value_2nd = generate_line_up_from_stack(dfMain, find_2nd_best_stack(dfMain, best_stack_value, attr="value"))
+    dk_lineup_value_comb = pd.concat([dk_lineup_value, dk_lineup_value_2nd])
+
+    dk_lineup_comb = pd.concat([dk_lineup_points_comb, dk_lineup_value_comb])
+    dk_lineup_comb.sort_values(by="TotalPoints", ascending=False, inplace=True, ignore_index=True)
+    #dk_lineup_comb["Salary"] = dk_lineup_comb.apply(lambda x: get_lineup_budget(dk_pool, x), axis=1)
+
+    dk_lineup_comb.to_csv(f"{path}dk_lineups_week{WEEK}.csv")
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
