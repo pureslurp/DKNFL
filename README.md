@@ -17,6 +17,9 @@ The last script will output 24 lineups ranked from best to worst, dk_lineups_wee
 
 ## parse_odds.py
 
+#### pre-req
+- Firefox installed
+
 #### inputs
 - Folder created in 2023 for the week to be predicted, e.g. WEEK12
 
@@ -36,8 +39,11 @@ Example for Week 12 Prediction
 
 ## nfl_dfs.py
 
+#### pre-req
+- parse_odds.py has already been ran
+
 #### inputs
-- NFL_Proj_{WEEK}.csv from parse_odds.py
+- NFL_Proj_{WEEK}.csv
 
 #### description
 This script will turn the player prop data output from the parse_odds.py script into dfs totals.
@@ -53,6 +59,9 @@ Example for Week 12 Prediction
 - NFL_Proj_DFS_WEEK{WEEK}.csv
 
 ## dfs_stack.py
+
+#### pre-req
+- nfl_dfs.py has already been ran
 
 #### inputs
 - NFL_Proj_DFS_WEEK{WEEK}.csv from nfl_dfs.py
