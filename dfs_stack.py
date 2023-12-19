@@ -506,7 +506,6 @@ def defense(dk_pool, WEEK):
     return dk_pool_def[["Name", "DFS Total"]]
 
 
-
 def main(argv):
     argParser = argparse.ArgumentParser()
     argParser.add_argument("week", type=int, help="NFL Week")
