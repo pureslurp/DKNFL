@@ -3,77 +3,12 @@ import random
 import numpy as np
 import sys
 import argparse
+from utils import TEAM_DICT, CITY_TO_TEAM
 
-team_dict = {'TB' : 'Buccaneers',
-             'SEA' : 'Seahawks',
-             'SF' : '49ers',
-             'LAC' : 'Chargers',
-             'PIT' : 'Steelers',
-             'ARI' : 'Cardinals',
-             'PHI' : 'Eagles',
-             'NYJ' : 'Jets',
-             'NYG' : 'Giants',
-             'NO' : 'Saints',
-             'NE' : 'Patriots',
-             'MIN' : 'Vikings',
-             'MIA' : 'Dolphins',
-             'LV' : 'Raiders',
-             'LAR' : 'Rams',
-             'KC' : 'Chiefs',
-             'JAX' : 'Jaguars',
-             'IND' : 'Colts',
-             'TEN' : 'Titans',
-             'GB' : 'Packers',
-             'DET' : 'Lions',
-             'DEN' : 'Broncos',
-             'DAL' : 'Cowboys',
-             'CLE' : 'Browns',
-             'CIN' : 'Bengals',
-             'CHI' : 'Bears',
-             'CAR' : 'Panthers',
-             'BUF' : 'Bills',
-             'BAL' : 'Ravens',
-             'ATL' : 'Falcons',
-             'WAS' : 'Commanders',
-             'HOU' : 'Texans'
-    }
 
-city_to_team = {
-             'Tampa Bay' : 'Buccaneers',
-             'Seattle' : 'Seahawks',
-             'San Francisco' : '49ers',
-             'LA Chargers' : 'Chargers',
-             'Pittsburgh' : 'Steelers',
-             'Arizona' : 'Cardinals',
-             'Philadelphia' : 'Eagles',
-             'NY Jets' : 'Jets',
-             'NY Giants' : 'Giants',
-             'New Orleans' : 'Saints',
-             'New England' : 'Patriots',
-             'Minnesota' : 'Vikings',
-             'Miami' : 'Dolphins',
-             'Las Vegas' : 'Raiders',
-             'LA Rams' : 'Rams',
-             'Kansas City' : 'Chiefs',
-             'Jacksonville' : 'Jaguars',
-             'Indianapolis' : 'Colts',
-             'Tennessee' : 'Titans',
-             'Green Bay' : 'Packers',
-             'Detroit' : 'Lions',
-             'Denver' : 'Broncos',
-             'Dallas' : 'Cowboys',
-             'Cleveland' : 'Browns',
-             'Cincinnati' : 'Bengals',
-             'Chicago' : 'Bears',
-             'Carolina' : 'Panthers',
-             'Buffalo' : 'Bills',
-             'Baltimore' : 'Ravens',
-             'Atlanta' : 'Falcons',
-             'Washington' : 'Commanders',
-             'Houston' : 'Texans'
-}
 class Player:
-    def __init__(self, player_df):
+    "A class to represent a Player"
+    def __init__(self, player_df: pd.DataFrame):
         try:
             self.name = player_df["Name + ID"].iloc[0]
             self.position = player_df["Position"].iloc[0]
@@ -90,19 +25,28 @@ class Player:
             self.team = player_df["TeamAbbrev"]
 
     def get_value(self):
+        "a function that returns the value of a Player"
         return self.score / self.salary * 1000
     
     def get_opponent(self):
+        "a function that returns the opposing team of a Player"
         game_info = self.game_info.split(" ")[0].split("@")
         if game_info[0] == self.team:
             return game_info[1]
         else:
             return game_info[0]
+    
+    def get_attribute(self, attr: str):
+        if attr == "value":
+            return self.get_value()
+        else:
+            return self.score
         
     def __str__(self):
         return f'{self.name}'
 
 class LineUp:
+    "A class to represent a DraftKings lineup"
     def __init__(self, qb: Player, rb1: Player, rb2: Player, wr1: Player, wr2:Player, wr3: Player, te: Player, flex: Player, dst:Player):
         self.players = {"QB": qb,
              "RB1" : rb1,
@@ -116,17 +60,21 @@ class LineUp:
             }
     
     def get_salary(self):
+        "a function that will return the sum of the LineUps total salary"
         salary = 0
         for key in self.players:
             salary += self.players[key].salary
         return salary
         
     def get_total(self):
+        "a function that will return the sum of the LineUps total projected score"
         total = 0
         for key in self.players:
             total += self.players[key].score
         return total
+    
     def duplicates(self):
+        "a function that will check the LineUp for duplicates"
         elem = []
         for key in self.players:
             elem.append(self.players[key].name)
@@ -134,7 +82,9 @@ class LineUp:
             return False
         else:
             return True
+        
     def to_dict(self):
+        "a function that will export the LineUp with salary and total points to a dictionary"
         self.players.update(
             {"Salary" : self.get_salary(),
              "TotalPoints" : self.get_total()})
@@ -145,6 +95,7 @@ class LineUp:
         
     @property
     def names(self):
+        "a function that returns a list of Players in the LineUp"
         names = []
         for key in self.players:
             names.append(self.players[key].name)
@@ -152,65 +103,80 @@ class LineUp:
     
     def __str__(self):
         return f'Lineup: {self.players}'
+    
+class Stack:
+    def __init__(self, qb: Player, wrte: Player) -> None:
+        self.stack = {
+            "QB" : qb,
+            "WR/TE" : wrte
+        }
 
-def get_list_of_teams(df):
+    def get_salary(self):
+        "a function that returns the total salary of a stack"
+        return self.stack["QB"].salary + self.stack["WR/TE"].salary
+    
+    def get_total(self):
+        "a function that returns the total projected score of a stack"
+        return self.stack["QB"].score + self.stack["WR/TE"].score
+    
+    def get_attribute(self, attr: str):
+        if attr == "value":
+            return self.stack["QB"].get_value() + self.stack["WR/TE"].get_value()
+        else:
+            return self.get_total()
+        
+    def __str__(self):
+        self._data = {
+            "Name": [self.stack["QB"].name, self.stack["WR/TE"].name, "Total"],
+            "Salary": [self.stack["QB"].salary, self.stack["WR/TE"].salary, self.get_salary()],
+            "Score" : [self.stack["QB"].score, self.stack["WR/TE"].score, self.get_total()],
+            "Value" : [self.stack["QB"].get_value(), self.stack["WR/TE"].get_value(), self.get_attribute("value")],
+        }
+        self.df = pd.DataFrame(self._data)
+        return f"{self.df}"
+
+def get_list_of_teams(df: pd.DataFrame) -> list:
+    "a function that returns a list of all teams playing this week"
     teamList = df['TeamAbbrev'].values.tolist()
     res_teamList = []
     [res_teamList.append(x) for x in teamList if x not in res_teamList]
     return res_teamList
 
 def qb_wr_stack(df, team):
-    '''given a qb, find wr stacks points and salary'''
+    '''given a team, return potential list of stacks'''
     new_df = df[df['TeamAbbrev'] == team]
     new_df = new_df[(new_df["Position"] == "QB") | (new_df["Position"] == "WR") | (new_df["Position"] == "TE")]
     return new_df
 
 
-def highest_stack(stack, attr="point", limit=16400):
-    if attr == 'value':
-        col = "Value"
-    else:
-        col = "DFS Total"
-    qb = stack[stack["Position"] == "QB"].iloc[0]
-    wrs = stack[(stack["Position"] == "WR") | (stack["Position"] == "TE")]
+def highest_stack(stack_df, attr="point", limit=16400):
+    qb = Player(stack_df[stack_df["Position"] == "QB"].iloc[0])
+    wrs = stack_df[(stack_df["Position"] == "WR") | (stack_df["Position"] == "TE")]
     value = 0
-    salary = 0
-    for index, wr in wrs.iterrows():
-        sal = float(qb["Salary"]) + float(wr["Salary"])
+    for _, wr in wrs.iterrows():
+        p = Player(wr)
+        sal = qb.salary + p.salary
         if sal >= limit:
             continue
         else:
-            score = float(qb[col]) + float(wr[col])
+            score = qb.get_attribute(attr) + p.get_attribute(attr)
             if score > value:
                 value = score
-                player = wr["Name"]
-                salary = int(qb["Salary"]) + int(wr["Salary"])
-    new_df = stack[(stack["Name"] == qb["Name"]) | (stack["Name"] == player)]
-    return new_df
-
-
-def stack_sal(stack, attr="point"):
-    if len(stack) != 2:
-        raise ValueError("Stack must be 2")
-    if attr == 'value':
-        col = "Value"
-    else:
-        col = "DFS Total"
-    score = sum(stack[col])
-    sal = sum(stack["Salary"])
-    return score, sal
+                player = p
+    stack = Stack(qb, player)
+    return stack
 
 def find_best_stack(df, attr="point"):
     highestTotal = 0
     for team in get_list_of_teams(df):
         high_stack = highest_stack(qb_wr_stack(df, team), attr)
-        if int(high_stack[high_stack["Position"] == "QB"]["Salary"]) < 5200:
+        if high_stack.stack["QB"].salary < 5200:
             continue
         else:
-            score, _ = stack_sal(highest_stack(qb_wr_stack(df, team), attr), attr)
+            score = high_stack.get_attribute(attr)
         if score > highestTotal:
             highestTotal = score
-            bestStack = highest_stack(qb_wr_stack(df, team), attr)
+            bestStack = high_stack
     return bestStack
 
 def find_2nd_best_stack(df, best_stack, attr="point"):
@@ -339,14 +305,14 @@ def generate_line_up_from_stack(df, stack, NoL=6):
     print(stack)
     dkRoster = pd.DataFrame(columns=("QB", "RB1", "RB2", "WR1", "WR2", "WR3", "TE", "FLEX", "DST", "Salary", "TotalPoints"))
     highest_points = 0
-    qb = Player(stack[stack["Position"] == "QB"])
+    qb = stack.stack["QB"]
     opp_team = qb.get_opponent()
-    if len(stack[stack["Position"] == "WR"]) == 1:
-        wr1 = Player(stack[stack["Position"] == "WR"])
+    if stack.stack["WR/TE"].position == "WR":
+        wr1 = stack.stack["WR/TE"]
         te_df = position_df(df, "TE")
         te = Player(te_df.iloc[[random.randint(0, len(te_df) - 1)]])
     else:
-        te = Player(stack[stack["Position"] == "TE"])
+        te = stack.stack["WR/TE"]
         wr_df = position_df(df, "WR")
         wr1 = Player(wr_df.iloc[[random.randint(0, len(wr_df) - 1)]])
     rb_df = position_df(df, "RB")
@@ -428,7 +394,7 @@ def find_opponent(data):
                 pass
             else:
                 opponent = x
-        return team_dict[opponent]
+        return TEAM_DICT[opponent]
     else:
         print('invalid data')
 
@@ -480,7 +446,7 @@ def defense(dk_pool, WEEK):
     scoring_offense.drop(['Rsh TD','Rec TD','2-PT'],axis=1,inplace=True)
     dk_merge_def = pd.merge(pass_offense,rush_offense,how='left',on='Team')
     dk_merge_def = pd.merge(dk_merge_def,scoring_offense,how='left',on='Team')
-    ppg["Opp"] = ppg["Team"].apply(lambda x: city_to_team[x])
+    ppg["Opp"] = ppg["Team"].apply(lambda x: CITY_TO_TEAM[x])
     ppg.drop(["Team", 'Last 3','Last 1','Home', "Away", "2022"],axis=1,inplace=True)
     dk_merge_def['Opp'] = dk_merge_def['Team'].apply(lambda x: find_name(x))
     dk_merge_def = pd.merge(dk_merge_def,ppg,how='left',on='Opp')
@@ -491,7 +457,6 @@ def defense(dk_pool, WEEK):
     dk_merge_def['Total'] = dk_merge_def['INT Pts'] + dk_merge_def['Sack Pts'] + dk_merge_def['Fum Pts'] + dk_merge_def['Pts Scored']
     dk_merge_def.sort_values(by=['Total'],ascending=True,inplace=True)
     dk_merge_def['Scale'] = d_scale
-    print(dk_merge_def)
     dk_merge_def.drop(['INT','Sck','Rush FUM','Tot TD','Team','INT Pts','Sack Pts','Total','2023','Fum Pts','Pts Scored'],axis=1,inplace=True)
     
     dk_pool_def = dk_pool[dk_pool['Position'] == 'DST']
@@ -499,8 +464,6 @@ def defense(dk_pool, WEEK):
     dk_pool_def['Opp'] = dk_pool_def.apply(lambda x: find_opponent(x),axis=1)
     dk_pool_def = pd.merge(dk_pool_def, dk_merge_def, how='left',on='Opp')
     dk_pool_def['DFS Total'] = ((dk_pool_def['AvgPointsPerGame']/dk_pool_def['AvgPointsPerGame'].max()) * 8) + dk_pool_def['Scale']
-    print(dk_pool_def)
-    dk_pool_def.to_csv('dk_defense.csv', index = False)
     dk_pool_def.drop(['Game Info','TeamAbbrev','AvgPointsPerGame','Scale','Opp'],axis=1,inplace=True)
     
     return dk_pool_def[["Name", "DFS Total"]]
