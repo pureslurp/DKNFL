@@ -177,8 +177,6 @@ def find_best_stack(df, attr="point", second_best=False):
         else:
             score = round(high_stack.get_attribute(attr), 2)
             stacks[high_stack] = score
-
-    
     if second_best:
         sorted_stacks = sorted(((v,k) for k,v in stacks.items()))
         return sorted_stacks[-2][1]
@@ -186,12 +184,14 @@ def find_best_stack(df, attr="point", second_best=False):
         return (max(zip(stacks.values(), stacks.keys()))[1])
 
 def fix_player_name(name):
+    "a function that syncs names between databases"
     if name == "DJ Chark":
         return "DJ Chark Jr."
     else:
         return name.strip()
 
 def position_df(df, pos):
+    "a function that returns a filtered dataframe by position"
     if pos != "FLEX":
         new_df = df[df["Position"] == pos]
         new_df.reset_index(drop=True, inplace=True)
@@ -233,7 +233,7 @@ def get_bye_week(team):
 
 def calc_df_INT_Pts(data, WEEK):
     '''calculate defensive INT per game as DFS points'''
-    if get_bye_week(find_name(data[0])) < WEEK:
+    if BYE_DICT[find_name(data[0])] < WEEK:
         Int_Pt_Est = (data[1] * 2) / (WEEK - 2)
     else:
         Int_Pt_Est = (data[1] * 2) / (WEEK)
@@ -241,7 +241,7 @@ def calc_df_INT_Pts(data, WEEK):
 
 def calc_Sack_Pts(data, WEEK):
     '''calculate sacks per game as DFS points'''
-    if get_bye_week(find_name(data[0])) < WEEK:
+    if BYE_DICT[find_name(data[0])] < WEEK:
         Sck_Pt_Est = (data[2]) / (WEEK - 2)
     else:
         Sck_Pt_Est = (data[2]) / (WEEK)
@@ -249,7 +249,7 @@ def calc_Sack_Pts(data, WEEK):
 
 def calc_Fum_Pts(data, WEEK):
     '''calculate fumbles per game as DFS points'''
-    if get_bye_week(find_name(data[0])) < WEEK:
+    if BYE_DICT[find_name(data[0])] < WEEK:
         Fum_Pt_Est = (data[3] * 2) / (WEEK - 2)
     else:
         Fum_Pt_Est = (data[3] * 2) / (WEEK)
