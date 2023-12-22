@@ -3,7 +3,7 @@ import random
 import numpy as np
 import sys
 import argparse
-from utils import TEAM_DICT, CITY_TO_TEAM
+from utils import TEAM_DICT, CITY_TO_TEAM, BYE_DICT
 
 
 class Player:
@@ -229,41 +229,7 @@ def points_for(data):
 
 def get_bye_week(team):
     '''Find each teams bye week'''
-    bye_dict = {
-        'Commanders' : 14,
-        'Buccaneers' : 5,
-        'Seahawks' : 5,
-        '49ers' : 9,
-        'Chargers' : 5,
-        'Steelers' : 6,
-        'Cardinals' : 14,
-        'Eagles' : 10,
-        'Jets' : 7,
-        'Giants' : 13,
-        'Saints' : 11,
-        'Patriots' : 11,
-        'Vikings' : 13,
-        'Dolphins' : 10,
-        'Raiders' : 13,
-        'Rams' : 10,
-        'Chiefs' : 10,
-        'Jaguars' : 9,
-        'Colts' : 11,
-        'Texans' : 7,
-        'Titans' : 7,
-        'Packers' : 6,
-        'Lions' : 9,
-        'Broncos' : 9,
-        'Cowboys' : 7,
-        'Browns' : 5,
-        'Bengals' : 7,
-        'Bears' : 13,
-        'Panthers' : 7,
-        'Bills' : 13,
-        'Ravens' : 13,
-        'Falcons' : 11
-        }
-    return bye_dict[team]
+    return BYE_DICT[team]
 
 def calc_df_INT_Pts(data, WEEK):
     '''calculate defensive INT per game as DFS points'''
@@ -309,7 +275,7 @@ def generate_line_up_from_stack(df, stack, NoL=6):
     flex_df = position_df(df, "FLEX")
     dst_df = position_df(df, "DST")
     dst_df = dst_df[dst_df["TeamAbbrev"] != opp_team]
-    for x in range(2000):
+    for x in range(200000):
         rb1 = Player(rb_df.iloc[[random.randint(0, len(rb_df) - 1)]])
         rb2 = Player(rb_df.iloc[[random.randint(0, len(rb_df) - 1)]])
         wr2 = Player(wr_df.iloc[[random.randint(0, len(wr_df) - 1)]])
@@ -349,7 +315,6 @@ def optimize_lineups(lineups, stack, df):
             continue
         else:
             lineups.iloc[index] = list(lineup_obj.to_dict().values())
-    print(f"After: {lineups}")
     return lineups
             
 def get_salary(df, player):
