@@ -150,6 +150,7 @@ def qb_wr_stack(df, team):
 
 
 def highest_stack(stack_df, attr="point", limit=16400):
+    "a function that returns the best stack from a list of a teams WRs and TEs"
     qb = Player(stack_df[stack_df["Position"] == "QB"].iloc[0])
     wrs = stack_df[(stack_df["Position"] == "WR") | (stack_df["Position"] == "TE")]
     value = 0
@@ -166,35 +167,23 @@ def highest_stack(stack_df, attr="point", limit=16400):
     stack = Stack(qb, player)
     return stack
 
-def find_best_stack(df, attr="point"):
-    highestTotal = 0
+def find_best_stack(df, attr="point", second_best=False):
+    "a function that finds the best stack from all the teams"
+    stacks = {}
     for team in get_list_of_teams(df):
         high_stack = highest_stack(qb_wr_stack(df, team), attr)
         if high_stack.stack["QB"].salary < 5200:
             continue
         else:
-            score = high_stack.get_attribute(attr)
-        if score > highestTotal:
-            highestTotal = score
-            bestStack = high_stack
-    return bestStack
+            score = round(high_stack.get_attribute(attr), 2)
+            stacks[high_stack] = score
 
-def find_2nd_best_stack(df, best_stack, attr="point"):
-    highestTotal = 0
-    best_stack_points = find_best_stack(df)
-    best_stack_value = find_best_stack(df, attr="value")
-    for team in get_list_of_teams(df):
-        stack_entry = highest_stack(qb_wr_stack(df, team), attr)
-        if int(stack_entry[stack_entry["Position"] == "QB"]["Salary"]) < 5200:
-            continue
-        else:
-            score, sal = stack_sal(stack_entry, attr)
-            stack_check_points = stack_entry[stack_entry['Position'] == "QB"].equals(best_stack_points[best_stack_points["Position"] == "QB"])
-            stack_check_value = stack_entry[stack_entry['Position'] == "QB"].equals(best_stack_value[best_stack_value["Position"] == "QB"])
-            if score > highestTotal and stack_check_points is False and stack_check_value is False:
-                highestTotal = score
-                best2ndStack = highest_stack(qb_wr_stack(df, team), attr)
-    return best2ndStack
+    
+    if second_best:
+        sorted_stacks = sorted(((v,k) for k,v in stacks.items()))
+        return sorted_stacks[-2][1]
+    else:
+        return (max(zip(stacks.values(), stacks.keys()))[1])
 
 def fix_player_name(name):
     if name == "DJ Chark":
@@ -320,7 +309,7 @@ def generate_line_up_from_stack(df, stack, NoL=6):
     flex_df = position_df(df, "FLEX")
     dst_df = position_df(df, "DST")
     dst_df = dst_df[dst_df["TeamAbbrev"] != opp_team]
-    for x in range(200000):
+    for x in range(2000):
         rb1 = Player(rb_df.iloc[[random.randint(0, len(rb_df) - 1)]])
         rb2 = Player(rb_df.iloc[[random.randint(0, len(rb_df) - 1)]])
         wr2 = Player(wr_df.iloc[[random.randint(0, len(wr_df) - 1)]])
@@ -340,8 +329,8 @@ def generate_line_up_from_stack(df, stack, NoL=6):
     return dkRoster
 
 def optimize_lineups(lineups, stack, df):
-    qb = Player(stack[stack["Position"] == "QB"])
-    wrt = Player(stack[stack["Position"] != "QB"])
+    qb = stack.stack["QB"]
+    wrt = stack.stack["WR/TE"]
     for index, lineup in lineups.iterrows():
         lineup_obj = LineUp(Player(df[df["Name + ID"] == lineup["QB"].name]), Player(df[df["Name + ID"] == lineup["RB1"].name]),  Player(df[df["Name + ID"] == lineup["RB2"].name]),  Player(df[df["Name + ID"] == lineup["WR1"].name]),  Player(df[df["Name + ID"] == lineup["WR2"].name]), Player(df[df["Name + ID"] == lineup["WR3"].name]), Player(df[df["Name + ID"] == lineup["TE"].name]), Player(df[df["Name + ID"] == lineup["FLEX"].name]),  Player(df[df["Name + ID"] == lineup["DST"].name]))
         for pos, player in lineup_obj.players.items():
@@ -429,18 +418,11 @@ def defense(dk_pool, WEEK):
     nfl_rushing_offense = pd.read_html('https://www.nfl.com/stats/team-stats/offense/rushing/2023/reg/all')
     nfl_scoring_offense = pd.read_html('https://www.nfl.com/stats/team-stats/offense/scoring/2023/reg/all')
     nfl_ppg = pd.read_html("https://www.teamrankings.com/nfl/stat/points-per-game")
-
     d_scale = np.linspace(-5, 5, 32)
-
-    ## DEF DATA
     pass_offense = nfl_passing_offense[0]
     rush_offense = nfl_rushing_offense[0]
     scoring_offense = nfl_scoring_offense[0]
     ppg = nfl_ppg[0]
-    #sack 1 pt
-    #int 2 pt
-    #fum 2 pt
-
     pass_offense.drop(['Att','Cmp','Cmp %','Yds/Att','Pass Yds','Rate','TD','1st','1st%','20+','40+','Lng','SckY'],axis=1,inplace=True)
     rush_offense.drop(['Att','Rush Yds','20+','40+','Lng','YPC','TD','Rush 1st','Rush 1st%'],axis=1,inplace=True)
     scoring_offense.drop(['Rsh TD','Rec TD','2-PT'],axis=1,inplace=True)
@@ -511,11 +493,11 @@ def main(argv):
     best_stack_value = find_best_stack(dfMain, attr="value")
     dk_lineup_points = generate_line_up_from_stack(dfMain, best_stack_points)
     print(dk_lineup_points)
-    dk_lineup_points_2nd = generate_line_up_from_stack(dfMain, find_2nd_best_stack(dfMain, best_stack_points))
+    dk_lineup_points_2nd = generate_line_up_from_stack(dfMain, find_best_stack(dfMain, second_best=True))
     dk_lineup_points_comb = pd.concat([dk_lineup_points, dk_lineup_points_2nd])
     print(dk_lineup_points_comb)
     dk_lineup_value = generate_line_up_from_stack(dfMain, best_stack_value)
-    dk_lineup_value_2nd = generate_line_up_from_stack(dfMain, find_2nd_best_stack(dfMain, best_stack_value, attr="value"))
+    dk_lineup_value_2nd = generate_line_up_from_stack(dfMain, find_best_stack(dfMain, attr="value", second_best=True))
     dk_lineup_value_comb = pd.concat([dk_lineup_value, dk_lineup_value_2nd])
 
     dk_lineup_comb = pd.concat([dk_lineup_points_comb, dk_lineup_value_comb])
