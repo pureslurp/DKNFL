@@ -227,10 +227,6 @@ def points_for(data):
         points = -4
     return points
 
-def get_bye_week(team):
-    '''Find each teams bye week'''
-    return BYE_DICT[team]
-
 def calc_df_INT_Pts(data, WEEK):
     '''calculate defensive INT per game as DFS points'''
     if BYE_DICT[find_name(data[0])] < WEEK:
@@ -256,7 +252,17 @@ def calc_Fum_Pts(data, WEEK):
     return Fum_Pt_Est 
 
 
-def generate_line_up_from_stack(df, stack, NoL=6):
+def generate_line_up_from_stack(df: pd.DataFrame, stack: Stack, NoL: int =6) -> pd.DataFrame:
+    '''a function that generates a dataframe of lineups based on a stack
+    
+    Inputs:
+        df (pd.DataFrame): the master dataframe with all players and info
+        stack (Stack): the stack to be built around
+        NoL (int): number of rows/lineups to generate from the stack
+
+    Output:
+        dkRoster (pd.DataFrame): a dataframe with stack lineups sorted by highest projected scores
+    '''
     print(stack)
     dkRoster = pd.DataFrame(columns=("QB", "RB1", "RB2", "WR1", "WR2", "WR3", "TE", "FLEX", "DST", "Salary", "TotalPoints"))
     highest_points = 0
