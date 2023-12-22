@@ -135,6 +135,8 @@ class Stack:
         self.df = pd.DataFrame(self._data)
         return f"{self.df}"
 
+    
+
 def get_list_of_teams(df: pd.DataFrame) -> list:
     "a function that returns a list of all teams playing this week"
     teamList = df['TeamAbbrev'].values.tolist()
@@ -387,20 +389,22 @@ def fix_name(data):
 def defense(dk_pool, WEEK):
     nfl_passing_offense = pd.read_html('https://www.nfl.com/stats/team-stats/offense/passing/2023/reg/all')
     nfl_rushing_offense = pd.read_html('https://www.nfl.com/stats/team-stats/offense/rushing/2023/reg/all')
-    nfl_scoring_offense = pd.read_html('https://www.nfl.com/stats/team-stats/offense/scoring/2023/reg/all')
+    #nfl_scoring_offense = pd.read_html('https://www.nfl.com/stats/team-stats/offense/scoring/2023/reg/all')
     nfl_ppg = pd.read_html("https://www.teamrankings.com/nfl/stat/points-per-game")
     d_scale = np.linspace(-5, 5, 32)
     pass_offense = nfl_passing_offense[0]
     rush_offense = nfl_rushing_offense[0]
-    scoring_offense = nfl_scoring_offense[0]
+    #scoring_offense = nfl_scoring_offense[0]
     ppg = nfl_ppg[0]
-    pass_offense.drop(['Att','Cmp','Cmp %','Yds/Att','Pass Yds','Rate','TD','1st','1st%','20+','40+','Lng','SckY'],axis=1,inplace=True)
-    rush_offense.drop(['Att','Rush Yds','20+','40+','Lng','YPC','TD','Rush 1st','Rush 1st%'],axis=1,inplace=True)
-    scoring_offense.drop(['Rsh TD','Rec TD','2-PT'],axis=1,inplace=True)
+
+    # pass_offense.drop(['Att','Cmp','Cmp %','Yds/Att','Pass Yds','Rate','TD','1st','1st%','20+','40+','Lng','SckY'],axis=1,inplace=True)
+    # rush_offense.drop(['Att','Rush Yds','20+','40+','Lng','YPC','TD','Rush 1st','Rush 1st%'],axis=1,inplace=True)
+    # scoring_offense.drop(['Rsh TD','Rec TD','2-PT'],axis=1,inplace=True)
+
     dk_merge_def = pd.merge(pass_offense,rush_offense,how='left',on='Team')
-    dk_merge_def = pd.merge(dk_merge_def,scoring_offense,how='left',on='Team')
+    # dk_merge_def = pd.merge(dk_merge_def,scoring_offense,how='left',on='Team')
     ppg["Opp"] = ppg["Team"].apply(lambda x: CITY_TO_TEAM[x])
-    ppg.drop(["Team", 'Last 3','Last 1','Home', "Away", "2022"],axis=1,inplace=True)
+    #ppg.drop(["Team", 'Last 3','Last 1','Home', "Away", "2022"],axis=1,inplace=True)
     dk_merge_def['Opp'] = dk_merge_def['Team'].apply(lambda x: find_name(x))
     dk_merge_def = pd.merge(dk_merge_def,ppg,how='left',on='Opp')
     dk_merge_def['INT Pts'] = dk_merge_def.apply(lambda x: calc_df_INT_Pts(x, WEEK),axis=1)
@@ -410,7 +414,7 @@ def defense(dk_pool, WEEK):
     dk_merge_def['Total'] = dk_merge_def['INT Pts'] + dk_merge_def['Sack Pts'] + dk_merge_def['Fum Pts'] + dk_merge_def['Pts Scored']
     dk_merge_def.sort_values(by=['Total'],ascending=True,inplace=True)
     dk_merge_def['Scale'] = d_scale
-    dk_merge_def.drop(['INT','Sck','Rush FUM','Tot TD','Team','INT Pts','Sack Pts','Total','2023','Fum Pts','Pts Scored'],axis=1,inplace=True)
+    #dk_merge_def.drop(['INT','Sck','Rush FUM','Tot TD','Team','INT Pts','Sack Pts','Total','2023','Fum Pts','Pts Scored'],axis=1,inplace=True)
     
     dk_pool_def = dk_pool[dk_pool['Position'] == 'DST']
     dk_pool_def.drop(['ID'],axis=1,inplace=True)
