@@ -302,7 +302,8 @@ def generate_line_up_from_stack(df: pd.DataFrame, stack: Stack, NoL: int =6) -> 
     dkRoster = optimize_lineups(dkRoster, stack, df)
     return dkRoster
 
-def optimize_lineups(lineups, stack, df):
+def optimize_lineups(lineups: pd.DataFrame, stack: Stack, df: pd.DataFrame):
+    "a function that optimizes a set of lineups by going through each player and comparing the above and below players"
     qb = stack.stack["QB"]
     wrt = stack.stack["WR/TE"]
     for index, lineup in lineups.iterrows():
@@ -324,24 +325,6 @@ def optimize_lineups(lineups, stack, df):
         else:
             lineups.iloc[index] = list(lineup_obj.to_dict().values())
     return lineups
-            
-def get_salary(df, player):
-    return int(df[df["Name + ID"] == player]["Salary"])
-
-def get_total_points(df, lineup):
-    total = 0
-    for _, value in lineup.iteritems():
-        if type(value) != float:
-            total += float(df[df["Name + ID"] == value]["DFS Total"])
-    return total
-
-def get_lineup_budget(df, lineup):
-    budget = 0
-    for _, value in lineup.iteritems():
-        if type(value) != float:
-            budget += get_salary(df, value)
-    return budget
-
 
 def find_opponent(data):
     '''Find who player is playing against from DK Salaries'''
