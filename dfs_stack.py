@@ -142,14 +142,14 @@ def get_list_of_teams(df: pd.DataFrame) -> list:
     [res_teamList.append(x) for x in teamList if x not in res_teamList]
     return res_teamList
 
-def qb_wr_stack(df, team):
+def qb_wr_stack(df: pd.DataFrame, team: str) -> pd.DataFrame:
     '''given a team, return potential list of stacks'''
     new_df = df[df['TeamAbbrev'] == team]
     new_df = new_df[(new_df["Position"] == "QB") | (new_df["Position"] == "WR") | (new_df["Position"] == "TE")]
     return new_df
 
 
-def highest_stack(stack_df, attr="point", limit=16400):
+def highest_stack(stack_df: Stack, attr: str ="point", limit:int=16400):
     "a function that returns the best stack from a list of a teams WRs and TEs"
     qb = Player(stack_df[stack_df["Position"] == "QB"].iloc[0])
     wrs = stack_df[(stack_df["Position"] == "WR") | (stack_df["Position"] == "TE")]
@@ -167,7 +167,7 @@ def highest_stack(stack_df, attr="point", limit=16400):
     stack = Stack(qb, player)
     return stack
 
-def find_best_stack(df, attr="point", second_best=False):
+def find_best_stack(df: pd.DataFrame, attr:str="point", second_best:bool=False):
     "a function that finds the best stack from all the teams"
     stacks = {}
     for team in get_list_of_teams(df):
@@ -183,14 +183,14 @@ def find_best_stack(df, attr="point", second_best=False):
     else:
         return (max(zip(stacks.values(), stacks.keys()))[1])
 
-def fix_player_name(name):
+def fix_player_name(name:str):
     "a function that syncs names between databases"
     if name == "DJ Chark":
         return "DJ Chark Jr."
     else:
         return name.strip()
 
-def position_df(df, pos):
+def position_df(df: pd.DataFrame, pos: str):
     "a function that returns a filtered dataframe by position"
     if pos != "FLEX":
         new_df = df[df["Position"] == pos]
@@ -200,12 +200,12 @@ def position_df(df, pos):
         new_df.reset_index(drop=True, inplace=True)
     return new_df
 
-def find_name(data):
+def find_name(data: str):
     '''Make NFL.com team naming the same as DK team naming'''
     data = data.split('  ')
     return data[1]
 
-def points_for(data):
+def points_for(data: float):
     '''find each teams average points for'''
     # 1 – 6 Points Allowed +7 Pts
     # 7 – 13 Points Allowed +4 Pts
