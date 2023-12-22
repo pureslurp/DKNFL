@@ -309,7 +309,7 @@ def optimize_lineups(lineups, stack, df):
         lineup_obj = LineUp(Player(df[df["Name + ID"] == lineup["QB"].name]), Player(df[df["Name + ID"] == lineup["RB1"].name]),  Player(df[df["Name + ID"] == lineup["RB2"].name]),  Player(df[df["Name + ID"] == lineup["WR1"].name]),  Player(df[df["Name + ID"] == lineup["WR2"].name]), Player(df[df["Name + ID"] == lineup["WR3"].name]), Player(df[df["Name + ID"] == lineup["TE"].name]), Player(df[df["Name + ID"] == lineup["FLEX"].name]),  Player(df[df["Name + ID"] == lineup["DST"].name]))
         for pos, player in lineup_obj.players.items():
             budget = lineup_obj.get_salary()
-            if player.name != qb.name and player.name != wrt.name and pos != "DST":
+            if player.name != qb.name and player.name != wrt.name:
                 df_filt = df[df["Roster Position"].str.contains(pos)==True]
                 df_filt = df_filt[(df_filt["Salary"] < player.salary + min(500, 50000-budget)) & (df_filt["Salary"] > player.salary - 500)] 
                 for _, r2 in df_filt.iterrows():
@@ -389,22 +389,13 @@ def fix_name(data):
 def defense(dk_pool, WEEK):
     nfl_passing_offense = pd.read_html('https://www.nfl.com/stats/team-stats/offense/passing/2023/reg/all')
     nfl_rushing_offense = pd.read_html('https://www.nfl.com/stats/team-stats/offense/rushing/2023/reg/all')
-    #nfl_scoring_offense = pd.read_html('https://www.nfl.com/stats/team-stats/offense/scoring/2023/reg/all')
     nfl_ppg = pd.read_html("https://www.teamrankings.com/nfl/stat/points-per-game")
     d_scale = np.linspace(-5, 5, 32)
     pass_offense = nfl_passing_offense[0]
     rush_offense = nfl_rushing_offense[0]
-    #scoring_offense = nfl_scoring_offense[0]
     ppg = nfl_ppg[0]
-
-    # pass_offense.drop(['Att','Cmp','Cmp %','Yds/Att','Pass Yds','Rate','TD','1st','1st%','20+','40+','Lng','SckY'],axis=1,inplace=True)
-    # rush_offense.drop(['Att','Rush Yds','20+','40+','Lng','YPC','TD','Rush 1st','Rush 1st%'],axis=1,inplace=True)
-    # scoring_offense.drop(['Rsh TD','Rec TD','2-PT'],axis=1,inplace=True)
-
     dk_merge_def = pd.merge(pass_offense,rush_offense,how='left',on='Team')
-    # dk_merge_def = pd.merge(dk_merge_def,scoring_offense,how='left',on='Team')
     ppg["Opp"] = ppg["Team"].apply(lambda x: CITY_TO_TEAM[x])
-    #ppg.drop(["Team", 'Last 3','Last 1','Home', "Away", "2022"],axis=1,inplace=True)
     dk_merge_def['Opp'] = dk_merge_def['Team'].apply(lambda x: find_name(x))
     dk_merge_def = pd.merge(dk_merge_def,ppg,how='left',on='Opp')
     dk_merge_def['INT Pts'] = dk_merge_def.apply(lambda x: calc_df_INT_Pts(x, WEEK),axis=1)
@@ -414,15 +405,12 @@ def defense(dk_pool, WEEK):
     dk_merge_def['Total'] = dk_merge_def['INT Pts'] + dk_merge_def['Sack Pts'] + dk_merge_def['Fum Pts'] + dk_merge_def['Pts Scored']
     dk_merge_def.sort_values(by=['Total'],ascending=True,inplace=True)
     dk_merge_def['Scale'] = d_scale
-    #dk_merge_def.drop(['INT','Sck','Rush FUM','Tot TD','Team','INT Pts','Sack Pts','Total','2023','Fum Pts','Pts Scored'],axis=1,inplace=True)
-    
     dk_pool_def = dk_pool[dk_pool['Position'] == 'DST']
     dk_pool_def.drop(['ID'],axis=1,inplace=True)
     dk_pool_def['Opp'] = dk_pool_def.apply(lambda x: find_opponent(x),axis=1)
     dk_pool_def = pd.merge(dk_pool_def, dk_merge_def, how='left',on='Opp')
     dk_pool_def['DFS Total'] = ((dk_pool_def['AvgPointsPerGame']/dk_pool_def['AvgPointsPerGame'].max()) * 8) + dk_pool_def['Scale']
     dk_pool_def.drop(['Game Info','TeamAbbrev','AvgPointsPerGame','Scale','Opp'],axis=1,inplace=True)
-    
     return dk_pool_def[["Name", "DFS Total"]]
 
 
