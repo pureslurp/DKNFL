@@ -24,8 +24,7 @@ The last script will output 24 lineups ranked from best to worst, dk_lineups_wee
 - Folder created in 2023 for the week to be predicted, e.g. WEEK12
 
 #### description
-This script will pull live player props at the time of execution, for best results it is recommended to run this within 90 minutes of kick-off
-This script takes 1 argument: the week
+This script will pull live player props at the time of execution, for best results it is recommended to run this within 90 minutes of kick-off. **Note** -- Since the script pulls live odds, you can't pull player prop data from a past week. If you try to pass a past week, it will overwrite that weeks data with the live player prop data from the time at which you ran the script.
 
 #### arguments
 1 required argument: the week as an int, e.g. 12
