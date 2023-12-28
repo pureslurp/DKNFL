@@ -148,10 +148,16 @@ def qb_wr_stack(df: pd.DataFrame, team: str) -> pd.DataFrame:
     '''given a team, return potential list of stacks'''
     new_df = df[df['TeamAbbrev'] == team]
     new_df = new_df[(new_df["Position"] == "QB") | (new_df["Position"] == "WR") | (new_df["Position"] == "TE")]
+    if len(new_df) < 3:
+        raise Exception(f"Unable to pull data for {team}, please verify props have been populated for members of that team.")
+    if len(new_df[new_df["Position"] == "QB"]) < 1:
+        raise Exception(f"Unable to find a QB for {team}, please verify props have been populated for members of that team.")
+    if len(new_df[(new_df["Position"] == "WR") | (new_df["Position"] == "TE")]) < 1:
+        raise Exception(f"Unable to find a WR/TE for {team}, please verify props have been populated for members of that team.")
     return new_df
 
 
-def highest_stack(stack_df: Stack, attr: str ="point", limit:int=16400):
+def highest_stack(stack_df: pd.DataFrame, attr: str ="point", limit:int=16400):
     "a function that returns the best stack from a list of a teams WRs and TEs"
     qb = Player(stack_df[stack_df["Position"] == "QB"].iloc[0])
     wrs = stack_df[(stack_df["Position"] == "WR") | (stack_df["Position"] == "TE")]
