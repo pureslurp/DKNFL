@@ -180,10 +180,9 @@ def find_best_stack(df: pd.DataFrame, attr:str="point", second_best:bool=False):
             score = round(high_stack.get_attribute(attr), 2)
             stacks[high_stack] = score
     if second_best:
-        sorted_stacks = sorted(((v,k) for k,v in stacks.items()))
-        return sorted_stacks[-2][1]
+        return list({k: v for k, v in sorted(stacks.items(), key=lambda item: item[1])}.items())
     else:
-        return (max(zip(stacks.values(), stacks.keys()))[1])
+        return list({k: v for k, v in sorted(stacks.items(), key=lambda item: item[1])}.items())
 
 def fix_player_name(name:str):
     "a function that syncs names between databases"
@@ -366,10 +365,12 @@ def fix_name(data):
         return "Pierre Strong Jr."
     elif data == "Larry Rountree":
         return "Larry Rountree III"
+    elif data == "Amon-Ra St.":
+        return "Amon-Ra St. Brown"
     else:
         return data
     
-def defense(dk_pool, WEEK):
+def defense(dk_pool: pd.DataFrame, WEEK:int):
     nfl_passing_offense = pd.read_html('https://www.nfl.com/stats/team-stats/offense/passing/2023/reg/all')
     nfl_rushing_offense = pd.read_html('https://www.nfl.com/stats/team-stats/offense/rushing/2023/reg/all')
     nfl_ppg = pd.read_html("https://www.teamrankings.com/nfl/stat/points-per-game")
@@ -445,11 +446,8 @@ def main(argv):
     dk_lineup_value = generate_line_up_from_stack(dfMain, best_stack_value)
     dk_lineup_value_2nd = generate_line_up_from_stack(dfMain, find_best_stack(dfMain, attr="value", second_best=True))
     dk_lineup_value_comb = pd.concat([dk_lineup_value, dk_lineup_value_2nd])
-
     dk_lineup_comb = pd.concat([dk_lineup_points_comb, dk_lineup_value_comb])
     dk_lineup_comb.sort_values(by="TotalPoints", ascending=False, inplace=True, ignore_index=True)
-    #dk_lineup_comb["Salary"] = dk_lineup_comb.apply(lambda x: get_lineup_budget(dk_pool, x), axis=1)
-
     dk_lineup_comb.to_csv(f"{path}dk_lineups_week{WEEK}.csv")
 
 if __name__ == "__main__":
