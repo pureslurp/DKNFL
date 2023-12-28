@@ -190,13 +190,6 @@ def find_best_stack(df: pd.DataFrame, attr:str="point", second_best:bool=False):
     else:
         return list({k: v for k, v in sorted(stacks.items(), key=lambda item: item[1])}.items())
 
-def fix_player_name(name:str):
-    "a function that syncs names between databases"
-    if name == "DJ Chark":
-        return "DJ Chark Jr."
-    else:
-        return name.strip()
-
 def position_df(df: pd.DataFrame, pos: str):
     "a function that returns a filtered dataframe by position"
     if pos != "FLEX":
