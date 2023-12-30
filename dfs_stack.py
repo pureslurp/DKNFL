@@ -326,7 +326,6 @@ def generate_line_up_from_stack(df: pd.DataFrame, stack: Stack, NoL: int =6) -> 
 
 def optimize_lineups(lineups: pd.DataFrame, stack: Stack, df: pd.DataFrame):
     "a function that optimizes a set of lineups by going through each player and comparing the above and below players"
-    #qb = stack.stack["QB"]
     wrt = stack.stack["WR/TE"]
     for index, lineup in lineups.iterrows():
         lineup_obj = LineUp(Player(df[df["Name + ID"] == lineup["QB"].name]), Player(df[df["Name + ID"] == lineup["RB1"].name]),  Player(df[df["Name + ID"] == lineup["RB2"].name]),  Player(df[df["Name + ID"] == lineup["WR1"].name]),  Player(df[df["Name + ID"] == lineup["WR2"].name]), Player(df[df["Name + ID"] == lineup["WR3"].name]), Player(df[df["Name + ID"] == lineup["TE"].name]), Player(df[df["Name + ID"] == lineup["FLEX"].name]),  Player(df[df["Name + ID"] == lineup["DST"].name]))
