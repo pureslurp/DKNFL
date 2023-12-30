@@ -92,6 +92,30 @@ class LineUp:
     
     def __len__(self):
         return 9
+    
+    def get_lowest_sal(self):
+        "a function that returns the player with the lowest salary (excluding defense)"
+        _low_sal = 10000
+        for key, value in self.players:
+            if key != "DST":
+                if value.salary < _low_sal:
+                    _low_sal = value.salary
+                    low_sal_player = value
+        return low_sal_player
+
+
+    def optimize(self, df, wrt):
+        for pos, player in self.players.items():
+            budget = self.get_salary()
+            if player.position != "QB" and player.name != wrt.name:
+                df_filt = df[df["Roster Position"].str.contains(pos)==True]
+                df_filt = df_filt[(df_filt["Salary"] < player.salary + min(500, 50000-budget)) & (df_filt["Salary"] > player.salary - 500)] 
+                for _, r2 in df_filt.iterrows():
+                    new_player = Player(r2)
+                    if new_player.score > self.players[pos].score and new_player.name not in self.names:
+                        print(f"Replacing {self.players[pos].name} with {new_player.name}" )
+                        self.players[pos] = new_player
+        return self
         
     @property
     def names(self):
@@ -186,9 +210,9 @@ def find_best_stack(df: pd.DataFrame, attr:str="point", second_best:bool=False):
             score = round(high_stack.get_attribute(attr), 2)
             stacks[high_stack] = score
     if second_best:
-        return list({k: v for k, v in sorted(stacks.items(), key=lambda item: item[1])}.items())
+        return list({k: v for k, v in sorted(stacks.items(), key=lambda item: item[1])}.items())[-2][0]
     else:
-        return list({k: v for k, v in sorted(stacks.items(), key=lambda item: item[1])}.items())
+        return list({k: v for k, v in sorted(stacks.items(), key=lambda item: item[1])}.items())[-1][0]
 
 def position_df(df: pd.DataFrame, pos: str):
     "a function that returns a filtered dataframe by position"
@@ -302,20 +326,11 @@ def generate_line_up_from_stack(df: pd.DataFrame, stack: Stack, NoL: int =6) -> 
 
 def optimize_lineups(lineups: pd.DataFrame, stack: Stack, df: pd.DataFrame):
     "a function that optimizes a set of lineups by going through each player and comparing the above and below players"
-    qb = stack.stack["QB"]
+    #qb = stack.stack["QB"]
     wrt = stack.stack["WR/TE"]
     for index, lineup in lineups.iterrows():
         lineup_obj = LineUp(Player(df[df["Name + ID"] == lineup["QB"].name]), Player(df[df["Name + ID"] == lineup["RB1"].name]),  Player(df[df["Name + ID"] == lineup["RB2"].name]),  Player(df[df["Name + ID"] == lineup["WR1"].name]),  Player(df[df["Name + ID"] == lineup["WR2"].name]), Player(df[df["Name + ID"] == lineup["WR3"].name]), Player(df[df["Name + ID"] == lineup["TE"].name]), Player(df[df["Name + ID"] == lineup["FLEX"].name]),  Player(df[df["Name + ID"] == lineup["DST"].name]))
-        for pos, player in lineup_obj.players.items():
-            budget = lineup_obj.get_salary()
-            if player.name != qb.name and player.name != wrt.name:
-                df_filt = df[df["Roster Position"].str.contains(pos)==True]
-                df_filt = df_filt[(df_filt["Salary"] < player.salary + min(500, 50000-budget)) & (df_filt["Salary"] > player.salary - 500)] 
-                for _, r2 in df_filt.iterrows():
-                    new_player = Player(r2)
-                    if new_player.score > lineup_obj.players[pos].score and new_player.name not in lineup_obj.names:
-                        print(f"Replacing {lineup_obj.players[pos].name} with {new_player.name}" )
-                        lineup_obj.players[pos] = new_player
+        lineup_obj = lineup_obj.optimize(df, wrt)
         lineup["TotalPoints"] = lineup_obj.get_total()
         if lineup["TotalPoints"] in lineups["TotalPoints"].values:
             print("duplicate")
