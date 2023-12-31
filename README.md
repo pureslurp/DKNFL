@@ -1,3 +1,6 @@
+# Overview
+This repository predicts DraftKings NFL contest lineups based on optimized player prop data.
+
 # Quick Start
 There are 3 scripts needed to run predictions, in order. Each script requires the argument of "Week"
 1. parse_odds.py
