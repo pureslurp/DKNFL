@@ -93,15 +93,16 @@ class LineUp:
     def __len__(self):
         return 9
     
-    def get_lowest_sal(self):
+    def get_lowest_sal_player(self):
         "a function that returns the player with the lowest salary (excluding defense)"
         _low_sal = 10000
-        for key, value in self.players:
+        for key, value in self.players.items():
             if key != "DST":
                 if value.salary < _low_sal:
                     _low_sal = value.salary
-                    low_sal_player = value
-        return low_sal_player
+                    low_player = value
+                    low_player_pos = key
+        return low_player, low_player_pos
 
 
     def optimize(self, df, wrt):
@@ -115,6 +116,16 @@ class LineUp:
                     if new_player.score > self.players[pos].score and new_player.name not in self.names:
                         print(f"Replacing {self.players[pos].name} with {new_player.name}" )
                         self.players[pos] = new_player
+        _low_player, _low_player_pos = self.get_lowest_sal_player()
+        _budget = self.get_salary()
+        df_filt = df[df["Roster Position"].str.contains(_low_player.position)==True]
+        df_filt = df_filt[(df_filt["Salary"] < _low_player.salary + 50000-_budget) & (df_filt["Salary"] > _low_player.salary)] 
+        for _, r2 in df_filt.iterrows():
+            new_player = Player(r2)
+            if new_player.score > _low_player.score and new_player.name not in self.names:
+                print(f"Lowest sal -- Replacing {_low_player.name} with {new_player.name}" )
+                _low_player = new_player
+                self.players[_low_player_pos] = new_player
         return self
         
     @property
@@ -276,13 +287,14 @@ def calc_Fum_Pts(data, WEEK):
     return Fum_Pt_Est 
 
 
-def generate_line_up_from_stack(df: pd.DataFrame, stack: Stack, NoL: int =6) -> pd.DataFrame:
+def generate_line_up_from_stack(df: pd.DataFrame, stack: Stack, NoL: int =6, iter:int =200000) -> pd.DataFrame:
     '''a function that generates a dataframe of lineups based on a stack
     
     Inputs:
         df (pd.DataFrame): the master dataframe with all players and info
         stack (Stack): the stack to be built around
         NoL (int): number of rows/lineups to generate from the stack
+        iter (int): number of iterations to run
 
     Output:
         dkRoster (pd.DataFrame): a dataframe with stack lineups sorted by highest projected scores
@@ -305,7 +317,7 @@ def generate_line_up_from_stack(df: pd.DataFrame, stack: Stack, NoL: int =6) -> 
     flex_df = position_df(df, "FLEX")
     dst_df = position_df(df, "DST")
     dst_df = dst_df[dst_df["TeamAbbrev"] != opp_team]
-    for x in range(200000):
+    for x in range(iter):
         rb1 = Player(rb_df.iloc[[random.randint(0, len(rb_df) - 1)]])
         rb2 = Player(rb_df.iloc[[random.randint(0, len(rb_df) - 1)]])
         wr2 = Player(wr_df.iloc[[random.randint(0, len(wr_df) - 1)]])
@@ -320,7 +332,7 @@ def generate_line_up_from_stack(df: pd.DataFrame, stack: Stack, NoL: int =6) -> 
             if len(dkRoster) == (NoL + 1):
                 highest_points = float(dkRoster.iloc[NoL]["TotalPoints"])
         if x % 10000 == 0:
-            print(x)
+            print(f"{x/iter:.0%} complete, please wait...")
     dkRoster = optimize_lineups(dkRoster, stack, df)
     return dkRoster
 
