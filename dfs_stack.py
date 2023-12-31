@@ -4,6 +4,7 @@ import numpy as np
 import sys
 import argparse
 from utils import TEAM_DICT, CITY_TO_TEAM, BYE_DICT
+from alive_progress import alive_bar
 
 
 class Player:
@@ -123,7 +124,7 @@ class LineUp:
         for _, r2 in df_filt.iterrows():
             new_player = Player(r2)
             if new_player.score > _low_player.score and new_player.name not in self.names:
-                print(f"Lowest sal -- Replacing {_low_player.name} with {new_player.name}" )
+                print(f"Replacing {_low_player.name} with {new_player.name}" )
                 _low_player = new_player
                 self.players[_low_player_pos] = new_player
         return self
@@ -317,22 +318,23 @@ def generate_line_up_from_stack(df: pd.DataFrame, stack: Stack, NoL: int =6, ite
     flex_df = position_df(df, "FLEX")
     dst_df = position_df(df, "DST")
     dst_df = dst_df[dst_df["TeamAbbrev"] != opp_team]
-    for x in range(iter):
-        rb1 = Player(rb_df.iloc[[random.randint(0, len(rb_df) - 1)]])
-        rb2 = Player(rb_df.iloc[[random.randint(0, len(rb_df) - 1)]])
-        wr2 = Player(wr_df.iloc[[random.randint(0, len(wr_df) - 1)]])
-        wr3 = Player(wr_df.iloc[[random.randint(0, len(wr_df) - 1)]])
-        flex = Player(flex_df.iloc[[random.randint(0, len(flex_df) - 1)]])
-        dst = Player(dst_df.iloc[[random.randint(0, len(dst_df) - 1)]])
-        lineup = LineUp(qb, rb1, rb2, wr1, wr2, wr3, te, flex, dst)
-        if lineup.get_salary() <= 50000 and (lineup.get_total() > highest_points) and not lineup.duplicates():
-            dkRoster.loc[len(dkRoster)] = lineup.to_dict()
-            dkRoster.sort_values(by="TotalPoints", ascending=False, inplace=True, ignore_index=True)
-            dkRoster = dkRoster.iloc[0:NoL]
-            if len(dkRoster) == (NoL + 1):
-                highest_points = float(dkRoster.iloc[NoL]["TotalPoints"])
-        if x % 10000 == 0:
-            print(f"{x/iter:.0%} complete, please wait...")
+    with alive_bar(iter) as bar:
+        print("Building ultimate lineups...")
+        for _ in range(iter):
+            rb1 = Player(rb_df.iloc[[random.randint(0, len(rb_df) - 1)]])
+            rb2 = Player(rb_df.iloc[[random.randint(0, len(rb_df) - 1)]])
+            wr2 = Player(wr_df.iloc[[random.randint(0, len(wr_df) - 1)]])
+            wr3 = Player(wr_df.iloc[[random.randint(0, len(wr_df) - 1)]])
+            flex = Player(flex_df.iloc[[random.randint(0, len(flex_df) - 1)]])
+            dst = Player(dst_df.iloc[[random.randint(0, len(dst_df) - 1)]])
+            lineup = LineUp(qb, rb1, rb2, wr1, wr2, wr3, te, flex, dst)
+            if lineup.get_salary() <= 50000 and (lineup.get_total() > highest_points) and not lineup.duplicates():
+                dkRoster.loc[len(dkRoster)] = lineup.to_dict()
+                dkRoster.sort_values(by="TotalPoints", ascending=False, inplace=True, ignore_index=True)
+                dkRoster = dkRoster.iloc[0:NoL]
+                if len(dkRoster) == (NoL + 1):
+                    highest_points = float(dkRoster.iloc[NoL]["TotalPoints"])
+            bar()
     dkRoster = optimize_lineups(dkRoster, stack, df)
     return dkRoster
 
