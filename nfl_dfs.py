@@ -51,7 +51,7 @@ def main(argv):
     argParser.add_argument("week", type=int, help="NFL Week")
     args = argParser.parse_args()
     WEEK = args.week
-    nfl_stats = pd.read_csv(f"2023/WEEK{WEEK}/NFL_Proj_{WEEK}.csv")
+    nfl_stats = pd.read_csv(f"2024/WEEK{WEEK}/NFL_Proj_{WEEK}.csv")
     print(nfl_stats.head())
 
     stat_dict = {
@@ -72,7 +72,7 @@ def main(argv):
     nfl_stats.drop(columns=list(stat_dict.values()), inplace=True)
 
 
-    nfl_stats.to_csv(f"2023/WEEK{WEEK}/NFL_Proj_DFS_WEEK{WEEK}.csv")
+    nfl_stats.to_csv(f"2024/WEEK{WEEK}/NFL_Proj_DFS_WEEK{WEEK}.csv")
 
     print(nfl_stats.head())
 

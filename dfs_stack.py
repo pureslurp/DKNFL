@@ -436,7 +436,7 @@ def main(argv):
                            default="forward")
     args = argParser.parse_args()
     WEEK = args.week
-    path = f'2023/Week{WEEK}/'
+    path = f'2024/Week{WEEK}/'
     csv = f'{path}/DKSalaries-Week{WEEK}.csv'
     dk_pool = pd.read_csv(csv)
 

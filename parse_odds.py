@@ -49,7 +49,7 @@ def main(argv):
         result = driver.page_source
         soup = BeautifulSoup(result, "html.parser")
         odds_table = soup.find_all('ul', class_="table-list")
-        odds_list = odds_table[i].find_all("li")
+        odds_list = odds_table[0].find_all("li")
         for entry in odds_list:
             name, line = odds_list_row(entry)
             data_dict[f"{stat_list[i]}"][name] = line
@@ -66,7 +66,7 @@ def main(argv):
             result = driver.page_source
             soup = BeautifulSoup(result, "html.parser")
             odds_table = soup.find_all('ul', class_="table-list")
-            odds_list = odds_table[i+1].find_all("li")
+            odds_list = odds_table[0].find_all("li")
             for entry in odds_list:
                 name, line = odds_list_row(entry)
                 data_dict[f"{stat_list[i+1]}"][name] = line
@@ -89,7 +89,7 @@ def main(argv):
         master_df = pd.merge(master_df, entry_dict, how='left', on='Name')
 
     
-    master_df.to_csv(f"2023/WEEK{WEEK}/NFL_Proj_{WEEK}.csv", index=False)
+    master_df.to_csv(f"2024/WEEK{WEEK}/NFL_Proj_{WEEK}.csv", index=False)
     print(f"Successfully wrote file, /NFL_Proj_{WEEK}.csv")
 
 
