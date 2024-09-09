@@ -1,11 +1,8 @@
 import streamlit as st
-import plotly.express as px
 import pandas as pd
-import os
 import warnings
-import numpy as np
 import altair as alt
-from st_aggrid import GridOptionsBuilder, AgGrid, GridUpdateMode, ColumnsAutoSizeMode
+from st_aggrid import GridOptionsBuilder, AgGrid, GridUpdateMode
 
 warnings.filterwarnings("ignore")
 
