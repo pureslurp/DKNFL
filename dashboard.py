@@ -35,23 +35,24 @@ except:
 
 st.subheader(f"{week} Player Pool Summary")
 
-# select the columns you want the users to see
-gb = GridOptionsBuilder.from_dataframe(display_df)
-# configure selection
-gb.configure_selection(selection_mode="single", use_checkbox=True)
+with st.container(height=500):
+    # select the columns you want the users to see
+    gb = GridOptionsBuilder.from_dataframe(display_df)
+    # configure selection
+    gb.configure_selection(selection_mode="single", use_checkbox=True)
 
-gb.configure_default_column(
-    flex=1,
-    minWidth=100,
-    maxWidth=500,
-    resizable=True,
-    filter=True
-)
-gridOptions = gb.build()
+    gb.configure_default_column(
+        flex=1,
+        minWidth=100,
+        maxWidth=500,
+        resizable=True,
+        filter=True
+    )
+    gridOptions = gb.build()
 
-data = AgGrid(df,
-              gridOptions=gridOptions,
-              update_mode=GridUpdateMode.SELECTION_CHANGED)
+    data = AgGrid(df,
+                gridOptions=gridOptions,
+                update_mode=GridUpdateMode.SELECTION_CHANGED)
 
 sel_row = data["selected_rows"]
 st.subheader("DFS Points Evaluation")
