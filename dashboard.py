@@ -1,10 +1,7 @@
 import streamlit as st
 import pandas as pd
-import warnings
 import altair as alt
 from st_aggrid import GridOptionsBuilder, AgGrid, GridUpdateMode
-
-warnings.filterwarnings("ignore")
 
 st.set_page_config(page_title="Plum Dashboard", page_icon=":football:", layout="wide")
 
