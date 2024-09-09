@@ -3,3 +3,4 @@ pandas
 warnings
 altair
 st_aggrid
+streamlit-aggrid
