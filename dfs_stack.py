@@ -14,14 +14,14 @@ class Player:
             self.name = player_df["Name + ID"].iloc[0]
             self.position = player_df["Position"].iloc[0]
             self.salary = player_df["Salary"].iloc[0]
-            self.score = player_df["DFS Total"].iloc[0]
+            self.score = player_df["Proj DFS Total"].iloc[0]
             self.game_info = player_df["Game Info"].iloc[0]
             self.team = player_df["TeamAbbrev"].iloc[0]
         except:
             self.name = player_df["Name + ID"]
             self.position = player_df["Position"]
             self.salary = player_df["Salary"]
-            self.score = player_df["DFS Total"]
+            self.score = player_df["Proj DFS Total"]
             self.game_info = player_df["Game Info"]
             self.team = player_df["TeamAbbrev"]
 
@@ -318,6 +318,7 @@ def generate_line_up_from_stack(df: pd.DataFrame, stack: Stack, NoL: int =6, ite
     flex_df = position_df(df, "FLEX")
     dst_df = position_df(df, "DST")
     dst_df = dst_df[dst_df["TeamAbbrev"] != opp_team]
+    
     with alive_bar(iter) as bar:
         print("Building ultimate lineups...")
         for _ in range(iter):
@@ -394,6 +395,28 @@ def fix_name(data):
         return "Larry Rountree III"
     elif data == "Amon-Ra St.":
         return "Amon-Ra St. Brown"
+    elif data == "D.K. Metcalf":
+        return "DK Metcalf"
+    elif data == "D.J. Moore":
+        return "DJ Moore"
+    elif data == "Nathaniel Dell":
+        return "Tank Dell"
+    elif data == "Josh Palmer":
+        return "Joshua Palmer"
+    elif data == "Cartavious Bigsby":
+        return "Tank Bigsby"
+    elif data == "Damario Douglas":
+        return "DeMario Douglas"
+    elif data == "Re'Mahn Davis":
+        return "Ray Davis"
+    elif data == "Gabriel Davis":
+        return "Gabe Davis"
+    elif data == "Chigoziem Okonkwo":
+        return "Chig Okonkwo"
+    elif data == "John Mundt":
+        return "Johnny Mundt"
+    elif data == "Mar'Keise Irving":
+        return "Bucky Irving"
     else:
         return data
     
@@ -405,6 +428,7 @@ def defense(dk_pool: pd.DataFrame, WEEK:int):
     pass_offense = nfl_passing_offense[0]
     rush_offense = nfl_rushing_offense[0]
     ppg = nfl_ppg[0]
+
     dk_merge_def = pd.merge(pass_offense,rush_offense,how='left',on='Team')
     ppg["Opp"] = ppg["Team"].apply(lambda x: CITY_TO_TEAM[x])
     dk_merge_def['Opp'] = dk_merge_def['Team'].apply(lambda x: find_name(x))
@@ -441,7 +465,7 @@ def main(argv):
     dk_pool = pd.read_csv(csv)
 
     if args.test == "forward":
-        dk_stat = pd.read_csv(f"{path}NFL_PROJ_DFS_WEEK{WEEK}.csv")
+        dk_stat = pd.read_csv(f"{path}NFL_PROJ_DFS.csv")
     else:
         dk_stat = pd.read_csv(f"{path}box_score_debug_week_{WEEK}.csv")
 
@@ -449,9 +473,9 @@ def main(argv):
     dk_defense = defense(dk_pool, WEEK)
     dk_stat = pd.concat([dk_stat, dk_defense], ignore_index=True)
     dfMain = pd.merge(dk_pool,dk_stat,how='left',on='Name')
-    dfMain['DFS Total'] = dfMain['DFS Total'].replace('', np.nan)
-    dfMain.dropna(subset=['DFS Total'], inplace=True)
-    dfMain.to_csv(f"{path}debug.csv")
+    dfMain['Proj DFS Total'] = dfMain['DFS Total'].replace('', np.nan)
+    dfMain.dropna(subset=['Proj DFS Total'], inplace=True)
+    dfMain.to_csv(f"{path}dashboard.csv")
     dfMain_DEF = dfMain[dfMain["Position"] == "DST"]
     dfMain_Players = dfMain[dfMain["Position"] != "DST"]
     dfMain_QB = dfMain[dfMain["Position"] == "QB"]
@@ -462,7 +486,7 @@ def main(argv):
     frames = [dfMain_QB, dfMain_Players_TE, dfMain_DEF, dfMain_Players_noTEnoQB]
     dfMain = pd.concat(frames)
     dfMain.drop(["AvgPointsPerGame"],axis=1, inplace=True)
-    dfMain["Value"] = (dfMain["DFS Total"] / dfMain["Salary"]) * 1000
+    dfMain["Value"] = (dfMain["Proj DFS Total"] / dfMain["Salary"]) * 1000
     best_stack_points = find_best_stack(dfMain)
     best_stack_value = find_best_stack(dfMain, attr="value")
     dk_lineup_points = generate_line_up_from_stack(dfMain, best_stack_points)
