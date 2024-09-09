@@ -4,6 +4,7 @@ from bs4 import BeautifulSoup
 import sys
 import numpy as np
 import argparse
+from dfs_stack import fix_name
 
 def dk_scoring(col, key):
     match key:
@@ -142,9 +143,10 @@ def main(argv):
         master[key] = master[key].apply(lambda x: dk_scoring(x, key))
 
     #master["DFS Total"] = master[col_of_interets].sum()
-    master["DFS Total"] = master.iloc[:, 1:].sum(axis=1)
+    master["Act DFS Total"] = master.iloc[:, 1:].sum(axis=1)
     master.rename(columns={"player" : "Name"}, inplace=True)
-    master.to_csv(f"2023/WEEK{WEEK}/box_score_debug_week_{WEEK}.csv")
+    master["Name"] = master["Name"].apply(lambda x: fix_name(x))
+    master.to_csv(f"2024/WEEK{WEEK}/box_score_debug.csv")
     print(f"Successfully wrote box scores to WEEK{WEEK} folder")
     driver.close()
     driver.quit()  
