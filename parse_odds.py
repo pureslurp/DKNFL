@@ -12,6 +12,41 @@ import argparse
 
 stat_list = ["Passing Yards", "Rushing Yards", "Receiving Yards", "Receptions", "Touchdowns", "Passing TDS", "Interceptions"]
 
+def points_to_dfs(key, data):
+    match key:
+        case "Passing Yards":
+            if data >= 300:
+                return (data * 0.04) + 3
+            else:
+                return data * .04
+        case "Rushing Yards":
+            if data >= 100:
+                return (data * 0.1) + 3
+            else:
+                return data * 0.1
+        case "Receiving Yards":
+            return data * 0.1
+        case "Receptions":
+            return data
+        case "Touchdowns":
+            try:
+                if data < 0:
+                    return (data/-110) * 6
+                else:
+                    return (100/data) * 6
+            except:
+                return 0
+        case "Passing TDS":
+            return data * 4
+        case "Interceptions":
+            if data < 3 and data > 0:
+                return data * -1
+            else:
+                if data < 0:
+                    return (data/-110) * -1
+                else:
+                    return (100/data) * -1
+
 def odds_list_row(html):
     name = html.find("div", class_="props-name").text.strip()
     line = html.find("span", class_="data-moneyline").text.strip()
@@ -21,17 +56,22 @@ def odds_list_row(html):
         line_odds = 100
     name = name.split(' ')
     name = name[0] + " " + name[1]
-    if line[0] == "o" or line[0] == "u":
-        line = float(line[1:])
-    elif line == 'even':
-        line = 100
-    else:
-        line = float(line)
-    if line_odds < 0:
-        final_line = (line_odds/-110) * line
-    else:
-        final_line = (100/line_odds) * line
-    return name, final_line
+    try:
+        if line[0] == "o" or line[0] == "u":
+            line = float(line[1:])
+        elif line == 'even':
+            line = 100
+        else:
+            line = float(line)
+        if line_odds < 0:
+            final_line = (line_odds/-110) * line
+        else:
+            final_line = (100/line_odds) * line
+        return name, final_line
+    except:
+        print("can't parse ", name, line, line_odds)
+        return name, 0
+    
 
 
 def main(argv):
@@ -88,8 +128,28 @@ def main(argv):
         entry_dict = pd.DataFrame(data_dict[entry_stat].items(), columns=["Name", f"{entry_stat}"])
         master_df = pd.merge(master_df, entry_dict, how='left', on='Name')
 
+    # For Backtesting
+    # master_df = pd.read_csv(f"2024/WEEK{WEEK}/NFL_Proj_{WEEK}.csv")
     
-    master_df.to_csv(f"2024/WEEK{WEEK}/NFL_Proj_{WEEK}.csv", index=False)
+    stat_dict = {
+        "Passing Yards" : "Pass Yds DFS",
+        "Rushing Yards" : "Rush Yds DFS",
+        "Receiving Yards" : "Rec Yds DFS",
+        "Receptions" : "Rec DFS",
+        "Touchdowns" : "TDs DFS",
+        "Passing TDS" : "Pass TDs DFS",
+        "Interceptions" : "Int DFS"
+        }
+
+    for key, value in stat_dict.items():
+        master_df[value] = master_df[key].apply(lambda x: points_to_dfs(key, x))
+
+    master_df["DFS Total"] = master_df[list(stat_dict.values())].sum(axis=1)
+    # nfl_stats.drop(columns=list(stat_dict.keys()), inplace=True)
+    # nfl_stats.drop(columns=list(stat_dict.values()), inplace=True)
+
+
+    master_df.to_csv(f"2024/WEEK{WEEK}/NFL_Proj_DFS.csv")
     print(f"Successfully wrote file, /NFL_Proj_{WEEK}.csv")
 
 
