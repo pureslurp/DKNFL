@@ -57,9 +57,8 @@ with st.container(height=500):
 
 st.subheader("DFS Points Evaluation")
 if data["selected_rows"] is not None:
-    sel_row = data["selected_rows"].copy()
-    if isinstance(sel_row, list):
-        sel_row = sel_row[0]
+    if isinstance(data["selected_rows"], list):
+        sel_row = data["selected_rows"][0]
         st.write(sel_row)
         del sel_row["_selectedRowNodeInfo"]
         st.write(sel_row)
