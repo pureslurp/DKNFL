@@ -61,9 +61,9 @@ if data["selected_rows"] is not None:
     if isinstance(sel_row, list):
         sel_row = sel_row[0]
         st.write(sel_row)
-        # del sel_row["_selectedRowNodeInfo"]
-        # st.write(sel_row)
-        # sel_row = pd.DataFrame.from_dict(sel_row[0])
+        del sel_row["_selectedRowNodeInfo"]
+        st.write(sel_row)
+        sel_row = pd.DataFrame.from_dict(sel_row)
     if sel_row.iloc[0,1] == "WR":
         if past_week:
             wr_data = pd.DataFrame([["Receiving Yards", sel_row["Rec Yds DFS"].iloc[0], sel_row["rec_Yds"].iloc[0]],["Receptions", sel_row["Rec DFS"].iloc[0] , sel_row["rec_Rec"].iloc[0]], ["Touchdowns", sel_row["TDs DFS"].iloc[0], sel_row["rec_TD"].iloc[0]]], columns=['Receiving','Projected','Actual'])
