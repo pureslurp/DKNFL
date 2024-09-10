@@ -61,6 +61,7 @@ if data["selected_rows"] is not None:
     st.write(sel_row[0])
     if isinstance(sel_row, list):
         sel_row = pd.DataFrame.from_dict(sel_row[0])
+        sel_row.pop(next(iter(sel_row)))
         st.write(sel_row)
     if sel_row.iloc[0,1] == "WR":
         if past_week:
