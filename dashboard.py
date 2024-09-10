@@ -58,8 +58,11 @@ with st.container(height=500):
 st.subheader("DFS Points Evaluation")
 if data["selected_rows"] is not None:
     sel_row = data["selected_rows"].copy()
+    st.write(sel_row)
+    st.write(type(sel_row))
     if isinstance(sel_row, list):
         sel_row = pd.DataFrame(sel_row)
+        st.write(sel_row)
     if sel_row.iloc[0,1] == "WR":
         if past_week:
             wr_data = pd.DataFrame([["Receiving Yards", sel_row["Rec Yds DFS"].iloc[0], sel_row["rec_Yds"].iloc[0]],["Receptions", sel_row["Rec DFS"].iloc[0] , sel_row["rec_Rec"].iloc[0]], ["Touchdowns", sel_row["TDs DFS"].iloc[0], sel_row["rec_TD"].iloc[0]]], columns=['Receiving','Projected','Actual'])
