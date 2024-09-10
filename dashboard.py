@@ -56,22 +56,23 @@ with st.container(height=500):
 
 sel_row = data["selected_rows"]
 st.subheader("DFS Points Evaluation")
-if sel_row["Position"].iloc[0] == "WR":
-    if past_week:
-        wr_data = pd.DataFrame([["Receiving Yards", sel_row["Rec Yds DFS"].iloc[0], sel_row["rec_Yds"].iloc[0]],["Receptions", sel_row["Rec DFS"].iloc[0] , sel_row["rec_Rec"].iloc[0]], ["Touchdowns", sel_row["TDs DFS"].iloc[0], sel_row["rec_TD"].iloc[0]]], columns=['Receiving','Projected','Actual'])
-    else:
-        wr_data = pd.DataFrame([["Receiving Yards", sel_row["Rec Yds DFS"].iloc[0]],["Receptions", sel_row["Rec DFS"].iloc[0]], ["Touchdowns", sel_row["TDs DFS"].iloc[0]]], columns=['Receiving','Projected'])
-    #transform dataframe 
-    source=pd.melt(wr_data, id_vars=['Receiving'])
+if sel_row is not None:
+    if sel_row["Position"].iloc[0] == "WR":
+        if past_week:
+            wr_data = pd.DataFrame([["Receiving Yards", sel_row["Rec Yds DFS"].iloc[0], sel_row["rec_Yds"].iloc[0]],["Receptions", sel_row["Rec DFS"].iloc[0] , sel_row["rec_Rec"].iloc[0]], ["Touchdowns", sel_row["TDs DFS"].iloc[0], sel_row["rec_TD"].iloc[0]]], columns=['Receiving','Projected','Actual'])
+        else:
+            wr_data = pd.DataFrame([["Receiving Yards", sel_row["Rec Yds DFS"].iloc[0]],["Receptions", sel_row["Rec DFS"].iloc[0]], ["Touchdowns", sel_row["TDs DFS"].iloc[0]]], columns=['Receiving','Projected'])
+        #transform dataframe 
+        source=pd.melt(wr_data, id_vars=['Receiving'])
 
-    chart=alt.Chart(source).mark_bar(strokeWidth=90).encode(
-        x=alt.X('variable:N', title="", scale=alt.Scale(paddingOuter=0.5)),#paddingOuter - you can play with a space between 2 models 
-        y='value:Q',
-        color='variable:N',
-        column=alt.Column('Receiving:N', title="", spacing =0), #spacing =0 removes space between columns, column for can and st 
-    ).properties( width = 250, height = 300, ).configure_header(labelOrient='bottom').configure_view(
-        strokeOpacity=0)
+        chart=alt.Chart(source).mark_bar(strokeWidth=90).encode(
+            x=alt.X('variable:N', title="", scale=alt.Scale(paddingOuter=0.5)),#paddingOuter - you can play with a space between 2 models 
+            y='value:Q',
+            color='variable:N',
+            column=alt.Column('Receiving:N', title="", spacing =0), #spacing =0 removes space between columns, column for can and st 
+        ).properties( width = 250, height = 300, ).configure_header(labelOrient='bottom').configure_view(
+            strokeOpacity=0)
 
-    st.altair_chart(chart) #, use_container_width=True)
+        st.altair_chart(chart) #, use_container_width=True)
 
-st.write(sel_row)
+    st.write(sel_row)
