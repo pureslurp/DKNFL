@@ -152,5 +152,8 @@ if data["selected_rows"] is not None:
     
     chart = chart_data(selected_data, position)
     st.altair_chart(chart) #, use_container_width=True)
+    selected_data.loc['total']= selected_data.sum()
+    selected_data.loc[selected_data.index[-1], 'WR'] = ''
+    selected_data = selected_data.round(2)
     st.write(selected_data)
     
