@@ -393,7 +393,7 @@ def fix_name(data):
         return "Pierre Strong Jr."
     elif data == "Larry Rountree":
         return "Larry Rountree III"
-    elif data == "Amon-Ra St.":
+    elif data == "Amon-Ra St." or data == "Amon-Ra St.BrownA. S":
         return "Amon-Ra St. Brown"
     elif data == "D.K. Metcalf":
         return "DK Metcalf"
