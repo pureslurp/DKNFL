@@ -11,7 +11,7 @@ def chart_data(data, name):
         column=alt.Column(name, title=""),
         x=alt.X('variable', title="", scale=alt.Scale(paddingOuter=1)),
         y=alt.Y('Points'),
-        color=alt.Color('variable', scale=alt.Scale(range=['#134B70', '#EEEEEE']))
+        color=alt.Color('variable', scale=alt.Scale(range=['#134B70', '#808080']))
         ).configure_view(
             strokeWidth=0.0,
         )
@@ -90,7 +90,7 @@ st.markdown(md)
 
 # Create for Week
 st.sidebar.header("Week to Analyze")
-week_str = st.sidebar.selectbox("Pick your Week", [f"WEEK{x}" for x in range(1,18)], index=0)
+week_str = st.sidebar.selectbox("Pick your Week", [f"WEEK{x}" for x in range(1,3)], index=0)
 week = int(week_str[4:])
 
 # df_proj = pd.read_csv(f"2024/{week}/NFL_Proj_DFS.csv")
