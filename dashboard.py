@@ -36,24 +36,6 @@ def position_data(position:str, sel_row: pd.DataFrame, past_week:bool, last_week
         "QB": ["pass_Yds", "pass_TD", "pass_INT", "rush_Yds", "rush_TD"]
         }
 
-
-    # if past_week:
-    #         rb_data = pd.DataFrame([["Rushing Yards", sel_row["Rush Yds DFS"].iloc[0], sel_row["rush_Yds"].iloc[0]],
-    #                                 ["Receiving Yards", sel_row["Rec Yds DFS"].iloc[0], sel_row["rec_Yds"].iloc[0]],
-    #                                 ["Receptions", sel_row["Rec DFS"].iloc[0] , sel_row["rec_Rec"].iloc[0]],
-    #                                 ["Touchdowns", sel_row["TDs DFS"].iloc[0], sel_row["rec_TD"].iloc[0]],
-    #                                 ], columns=['Running Back','Projected','Actual'])
-    #     else:
-    #         past_week_row = last_week_df[last_week_df["Name"] == sel_row.iloc[0,3]]
-    #         try:
-    #             rb_data = pd.DataFrame([["Rushing Yards", sel_row["Rush Yds DFS"].iloc[0], past_week_row["rush_Yds"].iloc[0]],
-    #                                 ["Receiving Yards", sel_row["Rec Yds DFS"].iloc[0], past_week_row["rec_Yds"].iloc[0]],
-    #                                 ["Receptions", sel_row["Rec DFS"].iloc[0] , past_week_row["rec_Rec"].iloc[0]],
-    #                                 ["Touchdowns", sel_row["TDs DFS"].iloc[0], (past_week_row["rec_TD"].iloc[0] + past_week_row["rush_TD"].iloc[0])],
-    #                                 ], columns=['Running Back','Projected','Last Week'])
-    #         except:
-    #             st.write(f"Prop data for {sel_row.iloc[0,3]} not available yet")
-    
     if past_week:
         first_column = column_names[position]
         second_column = [sel_row[k].iloc[0] for k in proj_columns[position]]
@@ -103,7 +85,7 @@ st.set_page_config(page_title="Plum Dashboard", page_icon=":football:", layout="
 
 st.title(":football: Plum Dashboard")
 st.markdown('<style>div.block-container{padding-top:4rem;}</style>', unsafe_allow_html=True)
-md = "Welcome to the Plum Dashboard, your home for all your DraftKings Daily Fantasy Sports (DFS) needs. Use this dashboard to help build your lineups based on DFS projections by yours-truly PureSlurp. The dashboard uses data from props as well as historical data of draftkings scoring to help users create the perfect lineups! \n Quick Start Guide:\n - Select the week on the left you are want to deep dive\n - Select a player to see their projections and history"
+md = "Welcome to the Plum Dashboard, your home for all your DraftKings Daily Fantasy Sports (DFS) needs. Use this dashboard to help build your lineups based on DFS projections by yours-truly PureSlurp. The dashboard uses data from props as well as historical data of draftkings scoring to help users create the perfect lineups! \n Quick Start Guide:\n - Select the week on the left you want to deep dive\n - Select a player to see their projections and history"
 st.markdown(md)
 
 # Create for Week
