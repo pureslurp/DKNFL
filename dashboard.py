@@ -95,7 +95,7 @@ week = int(week_str[4:])
 
 # df_proj = pd.read_csv(f"2024/{week}/NFL_Proj_DFS.csv")
 df_debug = pd.read_csv(f"2024/{week_str}/dashboard.csv")
-df_debug["Value"] = (df_debug["Proj DFS Total"] / df_debug["Salary"]) * 1000
+df_debug["Value"] = round((df_debug["Proj DFS Total"] / df_debug["Salary"]) * 1000, 2)
 # df_debug = pd.merge(df_debug, df_proj, how="left", on="Name")
 
 # figure out if the week is in the past or future
