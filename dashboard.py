@@ -95,6 +95,7 @@ week = int(week_str[4:])
 
 # df_proj = pd.read_csv(f"2024/{week}/NFL_Proj_DFS.csv")
 df_debug = pd.read_csv(f"2024/{week_str}/dashboard.csv")
+df_debug["Value"] = (df_debug["Proj DFS Total"] / df_debug["Salary"]) * 1000
 # df_debug = pd.merge(df_debug, df_proj, how="left", on="Name")
 
 # figure out if the week is in the past or future
@@ -109,7 +110,7 @@ try:
 except:
     df = df_debug
     df = df.round({"Proj DFS Total": 2})
-    display_df = df[["Position", "Name", "Salary","Game Info", "TeamAbbrev", "Proj DFS Total"]]
+    display_df = df[["Position", "Name", "Salary","Game Info", "TeamAbbrev", "Proj DFS Total", "Value"]]
     past_week = False
     last_week_df = pd.read_csv(f"2024/WEEK{week-1}/box_score_debug.csv")
     print("box score not available yet")
