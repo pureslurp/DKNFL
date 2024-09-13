@@ -22,7 +22,7 @@ def position_data(position:str, sel_row: pd.DataFrame, past_week:bool, last_week
     column_names = {
         "WR": ["Receiving Yards", "Receptions", "Touchdowns"],
         "RB": ["Rushing Yards", "Receiving Yards", "Receptions", "Touchdowns"],
-        "QB": ["Throwing Yards", "Passing TD", "Interceptions", "Rushing Yards", "Rushing TD"]
+        "QB": ["Passing Yards", "Passing TD", "Interceptions", "Rushing Yards", "Rushing TD"]
         }
     
     proj_columns = {
