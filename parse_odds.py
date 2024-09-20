@@ -49,7 +49,11 @@ def points_to_dfs(key, data):
 
 def odds_list_row(html):
     name = html.find("div", class_="props-name").text.strip()
-    line = html.find("span", class_="data-moneyline").text.strip()
+    try:
+        line = html.find("span", class_="data-moneyline").text.strip()
+    except:
+        line = 0
+        print("no available odds for ", name)
     try:
         line_odds = float(html.find("small", class_="data-odds best").text.strip())
     except:
