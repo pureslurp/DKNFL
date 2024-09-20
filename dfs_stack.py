@@ -266,25 +266,25 @@ def points_for(data: float):
 def calc_df_INT_Pts(data, WEEK):
     '''calculate defensive INT per game as DFS points'''
     if BYE_DICT[find_name(data[0])] < WEEK:
-        Int_Pt_Est = (data[1] * 2) / (WEEK - 2)
+        Int_Pt_Est = (data["INT"] * 2) / (WEEK - 2)
     else:
-        Int_Pt_Est = (data[1] * 2) / (WEEK)
+        Int_Pt_Est = (data["INT"] * 2) / (WEEK)
     return Int_Pt_Est 
 
 def calc_Sack_Pts(data, WEEK):
     '''calculate sacks per game as DFS points'''
     if BYE_DICT[find_name(data[0])] < WEEK:
-        Sck_Pt_Est = (data[2]) / (WEEK - 2)
+        Sck_Pt_Est = (data["Sck"]) / (WEEK - 2)
     else:
-        Sck_Pt_Est = (data[2]) / (WEEK)
+        Sck_Pt_Est = (data["Sck"]) / (WEEK)
     return Sck_Pt_Est   
 
 def calc_Fum_Pts(data, WEEK):
     '''calculate fumbles per game as DFS points'''
     if BYE_DICT[find_name(data[0])] < WEEK:
-        Fum_Pt_Est = (data[3] * 2) / (WEEK - 2)
+        Fum_Pt_Est = (data["Rush FUM"] * 2) / (WEEK - 2)
     else:
-        Fum_Pt_Est = (data[3] * 2) / (WEEK)
+        Fum_Pt_Est = (data["Rush FUM"] * 2) / (WEEK)
     return Fum_Pt_Est 
 
 
@@ -421,8 +421,8 @@ def fix_name(data):
         return data
     
 def defense(dk_pool: pd.DataFrame, WEEK:int):
-    nfl_passing_offense = pd.read_html('https://www.nfl.com/stats/team-stats/offense/passing/2023/reg/all')
-    nfl_rushing_offense = pd.read_html('https://www.nfl.com/stats/team-stats/offense/rushing/2023/reg/all')
+    nfl_passing_offense = pd.read_html('https://www.nfl.com/stats/team-stats/offense/passing/2024/reg/all')
+    nfl_rushing_offense = pd.read_html('https://www.nfl.com/stats/team-stats/offense/rushing/2024/reg/all')
     nfl_ppg = pd.read_html("https://www.teamrankings.com/nfl/stat/points-per-game")
     d_scale = np.linspace(-5, 5, 32)
     pass_offense = nfl_passing_offense[0]
