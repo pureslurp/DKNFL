@@ -90,7 +90,7 @@ st.markdown(md)
 
 # Create for Week
 st.sidebar.header("Week to Analyze")
-week_str = st.sidebar.selectbox("Pick your Week", [f"WEEK{x}" for x in range(1,4)], index=0)
+week_str = st.sidebar.selectbox("Pick your Week", [f"WEEK{x}" for x in range(1,5)], index=0)
 week = int(week_str[4:])
 
 # df_proj = pd.read_csv(f"2024/{week}/NFL_Proj_DFS.csv")
