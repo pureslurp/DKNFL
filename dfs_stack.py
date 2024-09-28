@@ -467,7 +467,7 @@ def main(argv):
     if args.test == "forward":
         dk_stat = pd.read_csv(f"{path}NFL_PROJ_DFS.csv")
     else:
-        dk_stat = pd.read_csv(f"{path}box_score_debug_week_{WEEK}.csv")
+        dk_stat = pd.read_csv(f"{path}box_score_debug.csv")
 
     dk_stat["Name"] = dk_stat["Name"].apply(lambda x: fix_name(x))
     dk_defense = defense(dk_pool, WEEK)
