@@ -7,6 +7,8 @@ from utils import TEAM_DICT, CITY_TO_TEAM, BYE_DICT
 from alive_progress import alive_bar
 
 
+
+
 class Player:
     "A class to represent a Player"
     def __init__(self, player_df: pd.DataFrame):
@@ -14,14 +16,20 @@ class Player:
             self.name = player_df["Name + ID"].iloc[0]
             self.position = player_df["Position"].iloc[0]
             self.salary = player_df["Salary"].iloc[0]
-            self.score = player_df["Proj DFS Total"].iloc[0]
+            try:
+                self.score = player_df["Proj DFS Total"].iloc[0]
+            except:
+                self.score = player_df["Act DFS Total"].iloc[0]
             self.game_info = player_df["Game Info"].iloc[0]
             self.team = player_df["TeamAbbrev"].iloc[0]
         except:
             self.name = player_df["Name + ID"]
             self.position = player_df["Position"]
             self.salary = player_df["Salary"]
-            self.score = player_df["Proj DFS Total"]
+            try:
+                self.score = player_df["Proj DFS Total"]
+            except:
+                self.score = player_df["Act DFS Total"]
             self.game_info = player_df["Game Info"]
             self.team = player_df["TeamAbbrev"]
 
@@ -464,18 +472,26 @@ def main(argv):
     csv = f'{path}/DKSalaries-Week{WEEK}.csv'
     dk_pool = pd.read_csv(csv)
 
+    total_dict = {
+        "forward" : "Proj DFS Total",
+        "backtest" : "Act DFS Total"
+    }
+
     if args.test == "forward":
         dk_stat = pd.read_csv(f"{path}NFL_PROJ_DFS.csv")
+        csv_name = f"dk_lineups_week{WEEK}.csv"
     else:
         dk_stat = pd.read_csv(f"{path}box_score_debug.csv")
+        csv_name = f"dk_lineups_week{WEEK}_backtest.csv"
 
     dk_stat["Name"] = dk_stat["Name"].apply(lambda x: fix_name(x))
     dk_defense = defense(dk_pool, WEEK)
     dk_stat = pd.concat([dk_stat, dk_defense], ignore_index=True)
     dfMain = pd.merge(dk_pool,dk_stat,how='left',on='Name')
-    dfMain['Proj DFS Total'] = dfMain['DFS Total'].replace('', np.nan)
-    dfMain.dropna(subset=['Proj DFS Total'], inplace=True)
-    dfMain.to_csv(f"{path}dashboard.csv")
+    dfMain[total_dict[args.test]] = dfMain['DFS Total'].replace('', np.nan)
+    dfMain.dropna(subset=[total_dict[args.test]], inplace=True)
+    if args.test == "forward":
+        dfMain.to_csv(f"{path}dashboard.csv")
     dfMain_DEF = dfMain[dfMain["Position"] == "DST"]
     dfMain_Players = dfMain[dfMain["Position"] != "DST"]
     dfMain_QB = dfMain[dfMain["Position"] == "QB"]
@@ -486,7 +502,7 @@ def main(argv):
     frames = [dfMain_QB, dfMain_Players_TE, dfMain_DEF, dfMain_Players_noTEnoQB]
     dfMain = pd.concat(frames)
     dfMain.drop(["AvgPointsPerGame"],axis=1, inplace=True)
-    dfMain["Value"] = (dfMain["Proj DFS Total"] / dfMain["Salary"]) * 1000
+    dfMain["Value"] = (dfMain[total_dict[args.test]] / dfMain["Salary"]) * 1000
     best_stack_points = find_best_stack(dfMain)
     best_stack_value = find_best_stack(dfMain, attr="value")
     dk_lineup_points = generate_line_up_from_stack(dfMain, best_stack_points)
@@ -499,7 +515,7 @@ def main(argv):
     dk_lineup_value_comb = pd.concat([dk_lineup_value, dk_lineup_value_2nd])
     dk_lineup_comb = pd.concat([dk_lineup_points_comb, dk_lineup_value_comb])
     dk_lineup_comb.sort_values(by="TotalPoints", ascending=False, inplace=True, ignore_index=True)
-    dk_lineup_comb.to_csv(f"{path}dk_lineups_week{WEEK}.csv")
+    dk_lineup_comb.to_csv(f"{path}{csv_name}")
 
 if __name__ == "__main__":
     main(sys.argv[1:])

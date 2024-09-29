@@ -102,6 +102,7 @@ df_debug["Value"] = round((df_debug["Proj DFS Total"] / df_debug["Salary"]) * 10
 try:
     df_box_score = pd.read_csv(f"2024/{week_str}/box_score_debug.csv")
     df = pd.merge(df_debug, df_box_score, how="left", on="Name")
+    df = df.rename(columns={"DFS Total": "Act DFS Total"})
     df["Net"] = df["Proj DFS Total"] - df["Act DFS Total"]
     df = df.round({"Net": 2, "Proj DFS Total": 2})
     display_df = df[["Position", "Name", "Salary", "TeamAbbrev", "Proj DFS Total", "Act DFS Total", "Net"]]

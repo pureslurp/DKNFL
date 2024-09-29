@@ -143,7 +143,7 @@ def main(argv):
         master[key] = master[key].apply(lambda x: dk_scoring(x, key))
 
     #master["DFS Total"] = master[col_of_interets].sum()
-    master["Act DFS Total"] = master.iloc[:, 1:].sum(axis=1)
+    master["DFS Total"] = master.iloc[:, 1:].sum(axis=1)
     master.rename(columns={"player" : "Name"}, inplace=True)
     master["Name"] = master["Name"].apply(lambda x: fix_name(x))
     master.to_csv(f"2024/WEEK{WEEK}/box_score_debug.csv")
