@@ -52,111 +52,159 @@ class Player:
         return f'{self.name}'
 
 class LineUp:
-    "A class to represent a DraftKings lineup"
-    def __init__(self, qb: Player, rb1: Player, rb2: Player, wr1: Player, wr2:Player, wr3: Player, te: Player, flex: Player, dst:Player):
-        self.players = {"QB": qb,
-             "RB1" : rb1,
-             "RB2" : rb2,
-             "WR1" : wr1,
-             "WR2" : wr2,
-             "WR3" : wr3,
-             "TE" : te,
-             "FLEX" : flex,
-             "DST" : dst
-            }
-    
-    def get_salary(self):
-        "a function that will return the sum of the LineUps total salary"
-        salary = 0
-        for key in self.players:
-            salary += self.players[key].salary
-        return salary
-        
-    def get_total(self):
-        "a function that will return the sum of the LineUps total projected score"
-        total = 0
-        for key in self.players:
-            total += self.players[key].score
-        return total
-    
-    def duplicates(self):
-        "a function that will check the LineUp for duplicates"
-        elem = []
-        for key in self.players:
-            elem.append(self.players[key].name)
-        if len(elem) == len(set(elem)):
-            return False
-        else:
-            return True
-        
-    def to_dict(self):
-        "a function that will export the LineUp with salary and total points to a dictionary"
-        self.players.update(
-            {"Salary" : self.get_salary(),
-             "TotalPoints" : self.get_total()})
-        return self.players
-    
-    def __len__(self):
-        return 9
-    
-    def players_on_same_team(self, threshold=3) -> bool:
-        '''a functions that returns if there are multiple players on the same team in the same lineup'''
-        df = pd.DataFrame(columns=["Player", "Team"])
-        for key in self.players:
-            row = [self.players[key].name, self.players[key].team]
-            df.loc[len(df)] = row
-        values = df["Team"].value_counts().tolist()
-        df = df.iloc[0:0]
-        if max(values) > threshold:
-            return True
-        else:
-            return False
-    
-    def get_lowest_sal_player(self):
-        "a function that returns the player with the lowest salary (excluding defense)"
-        _low_sal = 10000
-        for key, value in self.players.items():
-            if key != "DST":
-                if value.salary < _low_sal:
-                    _low_sal = value.salary
-                    low_player = value
-                    low_player_pos = key
-        return low_player, low_player_pos
+    """A class to represent a DraftKings lineup"""
+    SALARY_CAP = 50000
+    MAX_PLAYERS_PER_TEAM = 3
 
+    def __init__(self, qb: Player, rb1: Player, rb2: Player, wr1: Player, wr2: Player, 
+                 wr3: Player, te: Player, flex: Player, dst: Player):
+        self._players = {
+            "QB": qb,
+            "RB1": rb1,
+            "RB2": rb2,
+            "WR1": wr1,
+            "WR2": wr2,
+            "WR3": wr3,
+            "TE": te,
+            "FLEX": flex,
+            "DST": dst
+        }
+        # Cache frequently accessed values
+        self._salary = None
+        self._total = None
+        self._names = None
 
-    def optimize(self, df, wrt):
-        for pos, player in self.players.items():
-            budget = self.get_salary()
-            if player.position != "QB" and player.name != wrt.name:
-                df_filt = df[df["Roster Position"].str.contains(pos)==True]
-                df_filt = df_filt[(df_filt["Salary"] < player.salary + min(500, 50000-budget)) & (df_filt["Salary"] > player.salary - 500)] 
-                for _, r2 in df_filt.iterrows():
-                    new_player = Player(r2)
-                    if new_player.score > self.players[pos].score and new_player.name not in self.names:
-                        print(f"Replacing {self.players[pos].name} with {new_player.name}" )
-                        self.players[pos] = new_player
-        _low_player, _low_player_pos = self.get_lowest_sal_player()
-        _budget = self.get_salary()
-        df_filt = df[df["Roster Position"].str.contains(_low_player.position)==True]
-        df_filt = df_filt[(df_filt["Salary"] < _low_player.salary + 50000-_budget) & (df_filt["Salary"] > _low_player.salary)] 
-        for _, r2 in df_filt.iterrows():
-            new_player = Player(r2)
-            if new_player.score > _low_player.score and new_player.name not in self.names:
-                print(f"Replacing {_low_player.name} with {new_player.name}" )
-                _low_player = new_player
-                self.players[_low_player_pos] = new_player
-        return self
-        
+    @property
+    def players(self):
+        """Getter for players dictionary"""
+        return self._players
+
+    @players.setter
+    def players(self, value):
+        """Setter for players dictionary that invalidates cached values"""
+        self._players = value
+        self._invalidate_cache()
+
+    def _invalidate_cache(self):
+        """Invalidates all cached values"""
+        self._salary = None
+        self._total = None
+        self._names = None
+
+    def update_player(self, position: str, player: Player):
+        """Updates a single player and invalidates cache"""
+        self._players[position] = player
+        self._invalidate_cache()
+
+    @property
+    def salary(self):
+        """Returns the sum of the LineUp's total salary"""
+        if self._salary is None:
+            self._salary = sum(player.salary for player in self._players.values())
+        return self._salary
+
+    @property
+    def total(self):
+        """Returns the sum of the LineUp's total projected score"""
+        if self._total is None:
+            self._total = sum(player.score for player in self._players.values())
+        return self._total
+
     @property
     def names(self):
-        "a function that returns a list of Players in the LineUp"
-        names = []
-        for key in self.players:
-            names.append(self.players[key].name)
-        return names
-    
-    def __str__(self):
-        return f'Lineup: {self.players}'
+        """Returns a list of Players in the LineUp"""
+        if self._names is None:
+            self._names = [player.name for player in self._players.values()]
+        return self._names
+
+    def duplicates(self) -> bool:
+        """Checks the LineUp for duplicates"""
+        return len(self.names) != len(set(self.names))
+
+    def to_dict(self) -> dict:
+        """Exports the LineUp with salary and total points to a dictionary"""
+        result = self.players.copy()
+        result.update({
+            "Salary": self.salary,
+            "TotalPoints": self.total
+        })
+        return result
+
+    def players_on_same_team(self, threshold=MAX_PLAYERS_PER_TEAM) -> bool:
+        """Returns if there are multiple players on the same team in the same lineup"""
+        team_counts = {}
+        for player in self._players.values():
+            team_counts[player.team] = team_counts.get(player.team, 0) + 1
+            if team_counts[player.team] > threshold:
+                return True
+        return False
+
+    def get_lowest_sal_player(self) -> tuple[Player, str]:
+        """Returns the player with the lowest salary (excluding defense)"""
+        min_salary = float('inf')
+        low_player = None
+        low_player_pos = None
+        
+        for pos, player in self._players.items():
+            if pos != "DST" and player.salary < min_salary:
+                min_salary = player.salary
+                low_player = player
+                low_player_pos = pos
+        
+        return low_player, low_player_pos
+
+    def optimize(self, df: pd.DataFrame, wrt: Player) -> 'LineUp':
+        """
+        Attempt to optimize a lineup by replacing players with higher-scoring alternatives within budget
+        """
+        for pos, player in self._players.items():
+            if player.position == "QB" or player.name == wrt.name:
+                continue
+
+            remaining_budget = self.SALARY_CAP - self.salary
+            salary_range = min(500, remaining_budget)
+
+            # Filter dataframe for potential replacements
+            df_filt = df[df["Roster Position"].str.contains(pos)]
+            df_filt = df_filt[
+                (df_filt["Salary"] < player.salary + salary_range) & 
+                (df_filt["Salary"] > player.salary - 500)
+            ]
+
+            # Try to find better players
+            for _, candidate in df_filt.iterrows():
+                new_player = Player(candidate)
+                if (new_player.score > player.score and 
+                    new_player.name not in self.names):
+                    print(f"Replacing {player.name} with {new_player.name}")
+                    self.update_player(pos, new_player)
+                    break
+
+        # Try to upgrade lowest salary player
+        low_player, low_pos = self.get_lowest_sal_player()
+        remaining_budget = self.SALARY_CAP - self.salary
+        
+        df_filt = df[df["Roster Position"].str.contains(low_player.position)]
+        df_filt = df_filt[
+            (df_filt["Salary"] < low_player.salary + remaining_budget) & 
+            (df_filt["Salary"] > low_player.salary)
+        ]
+
+        for _, candidate in df_filt.iterrows():
+            new_player = Player(candidate)
+            if (new_player.score > low_player.score and 
+                new_player.name not in self.names):
+                print(f"Replacing {low_player.name} with {new_player.name}")
+                self.update_player(low_pos, new_player)
+                break
+
+        return self
+
+    def __len__(self) -> int:
+        return len(self._players)
+
+    def __str__(self) -> str:
+        return f'Lineup: {self._players}'
     
 class Stack:
     def __init__(self, qb: Player, wrte: Player) -> None:
@@ -306,56 +354,86 @@ def calc_Fum_Pts(data, WEEK):
     return Fum_Pt_Est 
 
 
-def generate_line_up_from_stack(df: pd.DataFrame, stack: Stack, NoL: int =6, iter:int = 35000) -> pd.DataFrame:
-    '''a function that generates a dataframe of lineups based on a stack
-    
-    Inputs:
-        df (pd.DataFrame): the master dataframe with all players and info
-        stack (Stack): the stack to be built around
-        NoL (int): number of rows/lineups to generate from the stack
-        iter (int): number of iterations to run
-
-    Output:
-        dkRoster (pd.DataFrame): a dataframe with stack lineups sorted by highest projected scores
-    '''
+def generate_line_up_from_stack(df: pd.DataFrame, stack: Stack, NoL: int = 6) -> pd.DataFrame:
+    """An optimized function that generates lineups based on a stack"""
     print(stack)
     dkRoster = pd.DataFrame(columns=("QB", "RB1", "RB2", "WR1", "WR2", "WR3", "TE", "FLEX", "DST", "Salary", "TotalPoints"))
-    highest_points = 0
+    
+    # Set up initial stack players
     qb = stack.stack["QB"]
     opp_team = qb.get_opponent()
+    
+    # Handle WR/TE stack player
     if stack.stack["WR/TE"].position == "WR":
         wr1 = stack.stack["WR/TE"]
-        te_df = position_df(df, "TE")
-        te = Player(te_df.iloc[[random.randint(0, len(te_df) - 1)]])
+        te_df = position_df(df, "TE").copy()
+        te_df.loc[:, 'value'] = te_df['Proj DFS Total'] / te_df['Salary']
+        te_df = te_df.sort_values(by='value', ascending=False)
+        te = Player(te_df.iloc[0:1])
     else:
         te = stack.stack["WR/TE"]
-        wr_df = position_df(df, "WR")
-        wr1 = Player(wr_df.iloc[[random.randint(0, len(wr_df) - 1)]])
-    rb_df = position_df(df, "RB")
-    wr_df = position_df(df, "WR")
-    flex_df = position_df(df, "FLEX")
-    dst_df = position_df(df, "DST")
-    dst_df = dst_df[dst_df["TeamAbbrev"] != opp_team]
-    
-    with alive_bar(iter) as bar:
-        print("Building ultimate lineups...")
-        for _ in range(iter):
-            rb1 = Player(rb_df.iloc[[random.randint(0, len(rb_df) - 1)]])
-            rb2 = Player(rb_df.iloc[[random.randint(0, len(rb_df) - 1)]])
-            wr2 = Player(wr_df.iloc[[random.randint(0, len(wr_df) - 1)]])
-            wr3 = Player(wr_df.iloc[[random.randint(0, len(wr_df) - 1)]])
-            flex = Player(flex_df.iloc[[random.randint(0, len(flex_df) - 1)]])
-            dst = Player(dst_df.iloc[[random.randint(0, len(dst_df) - 1)]])
-            lineup = LineUp(qb, rb1, rb2, wr1, wr2, wr3, te, flex, dst)
-            if lineup.get_salary() <= 50000 and (lineup.get_total() > highest_points) and not lineup.duplicates():
-                dkRoster.loc[len(dkRoster)] = lineup.to_dict()
-                dkRoster.sort_values(by="TotalPoints", ascending=False, inplace=True, ignore_index=True)
-                dkRoster = dkRoster.iloc[0:NoL]
-                if len(dkRoster) == (NoL + 1):
-                    highest_points = float(dkRoster.iloc[NoL]["TotalPoints"])
-            bar()
-    dkRoster = optimize_lineups(dkRoster, stack, df)
-    return dkRoster
+        wr_df = position_df(df, "WR").copy()
+        wr_df.loc[:, 'value'] = wr_df['Proj DFS Total'] / wr_df['Salary']
+        wr_df = wr_df.sort_values(by='value', ascending=False)
+        wr1 = Player(wr_df.iloc[0:1])
+
+    # Pre-filter and sort positions by points per dollar (value)
+    rb_df = position_df(df, "RB").copy()
+    rb_df.loc[:, 'value'] = rb_df['Proj DFS Total'] / rb_df['Salary']
+    rb_df = rb_df.sort_values(by='value', ascending=False).head(20)
+
+    wr_df = position_df(df, "WR").copy()
+    wr_df.loc[:, 'value'] = wr_df['Proj DFS Total'] / wr_df['Salary']
+    wr_df = wr_df.sort_values(by='value', ascending=False).head(20)
+
+    flex_df = position_df(df, "FLEX").copy()
+    flex_df.loc[:, 'value'] = flex_df['Proj DFS Total'] / flex_df['Salary']
+    flex_df = flex_df.sort_values(by='value', ascending=False).head(20)
+
+    # Handle DST separately
+    dst_df = df[df["Position"] == "DST"].copy()
+    dst_df = dst_df[dst_df["TeamAbbrev"] != opp_team].copy()
+    dst_df.loc[:, 'value'] = dst_df['Proj DFS Total'] / dst_df['Salary']
+    dst_df = dst_df.sort_values(by='value', ascending=False).head(10)
+    dst_df.reset_index(drop=True, inplace=True)
+
+    # Systematic lineup generation
+    for rb1_idx in range(len(rb_df)):
+        rb1 = Player(rb_df.iloc[rb1_idx:rb1_idx+1])
+        
+        for rb2_idx in range(rb1_idx + 1, len(rb_df)):
+            rb2 = Player(rb_df.iloc[rb2_idx:rb2_idx+1])
+            
+            for wr2_idx in range(len(wr_df)):
+                wr2 = Player(wr_df.iloc[wr2_idx:wr2_idx+1])
+                
+                for wr3_idx in range(wr2_idx + 1, len(wr_df)):
+                    wr3 = Player(wr_df.iloc[wr3_idx:wr3_idx+1])
+                    
+                    for flex_idx in range(len(flex_df)):
+                        flex = Player(flex_df.iloc[flex_idx:flex_idx+1])
+                        
+                        for dst_idx in range(len(dst_df)):
+                            dst = Player(dst_df.iloc[dst_idx:dst_idx+1])
+                            
+                            # Create and validate lineup
+                            lineup = LineUp(qb, rb1, rb2, wr1, wr2, wr3, te, flex, dst)
+                            
+                            if lineup.salary <= 50000 and not lineup.duplicates():
+                                dkRoster.loc[len(dkRoster)] = lineup.to_dict()
+                                
+                            # Early stopping if we have enough high-quality lineups
+                            if len(dkRoster) >= NoL * 2:
+                                dkRoster.sort_values(by="TotalPoints", ascending=False, inplace=True, ignore_index=True)
+                                return optimize_lineups(dkRoster.head(NoL), stack, df)
+
+    # Final sorting and selection
+    if len(dkRoster) == 0:
+        print("No valid lineups found. Try adjusting the criteria.")
+        return dkRoster
+        
+    dkRoster.sort_values(by="TotalPoints", ascending=False, inplace=True, ignore_index=True)
+    return optimize_lineups(dkRoster.head(NoL), stack, df)
 
 def optimize_lineups(lineups: pd.DataFrame, stack: Stack, df: pd.DataFrame):
     "a function that optimizes a set of lineups by going through each player and comparing the above and below players"
@@ -363,7 +441,7 @@ def optimize_lineups(lineups: pd.DataFrame, stack: Stack, df: pd.DataFrame):
     for index, lineup in lineups.iterrows():
         lineup_obj = LineUp(Player(df[df["Name + ID"] == lineup["QB"].name]), Player(df[df["Name + ID"] == lineup["RB1"].name]),  Player(df[df["Name + ID"] == lineup["RB2"].name]),  Player(df[df["Name + ID"] == lineup["WR1"].name]),  Player(df[df["Name + ID"] == lineup["WR2"].name]), Player(df[df["Name + ID"] == lineup["WR3"].name]), Player(df[df["Name + ID"] == lineup["TE"].name]), Player(df[df["Name + ID"] == lineup["FLEX"].name]),  Player(df[df["Name + ID"] == lineup["DST"].name]))
         lineup_obj = lineup_obj.optimize(df, wrt)
-        lineup["TotalPoints"] = lineup_obj.get_total()
+        lineup["TotalPoints"] = lineup_obj.total
         if lineup["TotalPoints"] in lineups["TotalPoints"].values:
             print("duplicate or too many players on same team")
             continue
