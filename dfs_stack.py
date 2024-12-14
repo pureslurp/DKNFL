@@ -6,9 +6,6 @@ import argparse
 from utils import TEAM_DICT, CITY_TO_TEAM, BYE_DICT
 from alive_progress import alive_bar
 
-
-
-
 class Player:
     "A class to represent a Player"
     def __init__(self, player_df: pd.DataFrame):
@@ -101,6 +98,19 @@ class LineUp:
     
     def __len__(self):
         return 9
+    
+    def players_on_same_team(self, threshold=3) -> bool:
+        '''a functions that returns if there are multiple players on the same team in the same lineup'''
+        df = pd.DataFrame(columns=["Player", "Team"])
+        for key in self.players:
+            row = [self.players[key].name, self.players[key].team]
+            df.loc[len(df)] = row
+        values = df["Team"].value_counts().tolist()
+        df = df.iloc[0:0]
+        if max(values) > threshold:
+            return True
+        else:
+            return False
     
     def get_lowest_sal_player(self):
         "a function that returns the player with the lowest salary (excluding defense)"
@@ -201,7 +211,7 @@ def qb_wr_stack(df: pd.DataFrame, team: str) -> pd.DataFrame:
     return new_df
 
 
-def highest_stack(stack_df: pd.DataFrame, attr: str ="point", limit:int=16400):
+def highest_stack(stack_df: pd.DataFrame, attr: str ="point", limit:int=14500):
     "a function that returns the best stack from a list of a teams WRs and TEs"
     qb = Player(stack_df[stack_df["Position"] == "QB"].iloc[0])
     wrs = stack_df[(stack_df["Position"] == "WR") | (stack_df["Position"] == "TE")]
@@ -276,7 +286,7 @@ def calc_df_INT_Pts(data, WEEK):
     if BYE_DICT[find_name(data[0])] < WEEK:
         Int_Pt_Est = (data["INT"] * 2) / (WEEK - 2)
     else:
-        Int_Pt_Est = (data["INT"] * 2) / (WEEK)
+        Int_Pt_Est = (data["INT"] * 2) / (WEEK - 1)
     return Int_Pt_Est 
 
 def calc_Sack_Pts(data, WEEK):
@@ -284,7 +294,7 @@ def calc_Sack_Pts(data, WEEK):
     if BYE_DICT[find_name(data[0])] < WEEK:
         Sck_Pt_Est = (data["Sck"]) / (WEEK - 2)
     else:
-        Sck_Pt_Est = (data["Sck"]) / (WEEK)
+        Sck_Pt_Est = (data["Sck"]) / (WEEK - 1)
     return Sck_Pt_Est   
 
 def calc_Fum_Pts(data, WEEK):
@@ -292,11 +302,11 @@ def calc_Fum_Pts(data, WEEK):
     if BYE_DICT[find_name(data[0])] < WEEK:
         Fum_Pt_Est = (data["Rush FUM"] * 2) / (WEEK - 2)
     else:
-        Fum_Pt_Est = (data["Rush FUM"] * 2) / (WEEK)
+        Fum_Pt_Est = (data["Rush FUM"] * 2) / (WEEK - 1)
     return Fum_Pt_Est 
 
 
-def generate_line_up_from_stack(df: pd.DataFrame, stack: Stack, NoL: int =6, iter:int =200000) -> pd.DataFrame:
+def generate_line_up_from_stack(df: pd.DataFrame, stack: Stack, NoL: int =6, iter:int = 35000) -> pd.DataFrame:
     '''a function that generates a dataframe of lineups based on a stack
     
     Inputs:
@@ -355,7 +365,7 @@ def optimize_lineups(lineups: pd.DataFrame, stack: Stack, df: pd.DataFrame):
         lineup_obj = lineup_obj.optimize(df, wrt)
         lineup["TotalPoints"] = lineup_obj.get_total()
         if lineup["TotalPoints"] in lineups["TotalPoints"].values:
-            print("duplicate")
+            print("duplicate or too many players on same team")
             continue
         else:
             lineups.iloc[index] = list(lineup_obj.to_dict().values())
@@ -444,7 +454,7 @@ def defense(dk_pool: pd.DataFrame, WEEK:int):
     dk_merge_def['INT Pts'] = dk_merge_def.apply(lambda x: calc_df_INT_Pts(x, WEEK),axis=1)
     dk_merge_def['Sack Pts'] = dk_merge_def.apply(lambda x: calc_Sack_Pts(x, WEEK),axis=1)
     dk_merge_def['Fum Pts'] = dk_merge_def.apply(lambda x: calc_Fum_Pts(x, WEEK),axis=1)
-    dk_merge_def['Pts Scored'] = dk_merge_def["2023"].apply(lambda x: points_for(x))
+    dk_merge_def['Pts Scored'] = dk_merge_def["2024"].apply(lambda x: points_for(x))
     dk_merge_def['Total'] = dk_merge_def['INT Pts'] + dk_merge_def['Sack Pts'] + dk_merge_def['Fum Pts'] + dk_merge_def['Pts Scored']
     dk_merge_def.sort_values(by=['Total'],ascending=True,inplace=True)
     dk_merge_def['Scale'] = d_scale
@@ -452,6 +462,7 @@ def defense(dk_pool: pd.DataFrame, WEEK:int):
     dk_pool_def.drop(['ID'],axis=1,inplace=True)
     dk_pool_def['Opp'] = dk_pool_def.apply(lambda x: find_opponent(x),axis=1)
     dk_pool_def = pd.merge(dk_pool_def, dk_merge_def, how='left',on='Opp')
+    dk_pool_def.to_csv(f'2024/Week{WEEK}/defense_debug.csv')
     dk_pool_def['DFS Total'] = ((dk_pool_def['AvgPointsPerGame']/dk_pool_def['AvgPointsPerGame'].max()) * 8) + dk_pool_def['Scale']
     dk_pool_def.drop(['Game Info','TeamAbbrev','AvgPointsPerGame','Scale','Opp'],axis=1,inplace=True)
     return dk_pool_def[["Name", "DFS Total"]]
@@ -493,11 +504,12 @@ def main(argv):
     if args.test == "forward":
         dfMain.to_csv(f"{path}dashboard.csv")
     dfMain_DEF = dfMain[dfMain["Position"] == "DST"]
+
     dfMain_Players = dfMain[dfMain["Position"] != "DST"]
     dfMain_QB = dfMain[dfMain["Position"] == "QB"]
     dfMain_Players_noTEnoQB = dfMain_Players[(dfMain_Players["Position"] != "TE") & (dfMain_Players["Position"] != "QB")]
     dfMain_Players_TE = dfMain_Players[dfMain_Players["Position"] == "TE"]
-    dfMain_Players_TE = dfMain_Players_TE[dfMain_Players_TE["Salary"] > 2400]
+    dfMain_Players_TE = dfMain_Players_TE[dfMain_Players_TE["Salary"] > 3400]
     dfMain_Players_noTEnoQB = dfMain_Players_noTEnoQB[dfMain_Players_noTEnoQB["Salary"] > 3100]
     frames = [dfMain_QB, dfMain_Players_TE, dfMain_DEF, dfMain_Players_noTEnoQB]
     dfMain = pd.concat(frames)
