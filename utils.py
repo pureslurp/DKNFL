@@ -101,3 +101,8 @@ CITY_TO_TEAM = {
              'Washington' : 'Commanders',
              'Houston' : 'Texans'
 }
+
+TOTAL_DICT = {
+    "forward": "Proj DFS Total",
+    "backward": "Act DFS Total"
+}
