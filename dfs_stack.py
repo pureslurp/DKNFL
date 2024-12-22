@@ -485,8 +485,9 @@ class LineUps:
             
         return exposures
     
-    def reduce_exposure(self, df: pd.DataFrame, max_exposure: float = 0.66) -> 'LineUps':
+    def reduce_exposure(self, df: pd.DataFrame, stacks: list[Stack], max_exposure: float = 0.66) -> 'LineUps':
         """Reduce over-exposed players while maintaining lineup quality"""
+        self.lineups.sort(key=lambda x: x.total)
         max_iterations = 50
         iteration = 0
         
@@ -839,7 +840,7 @@ def generate_line_up_from_stack(df: pd.DataFrame, stacks: list[Stack], NoL: int 
     # Optimize and reduce exposure
     lineups = (lineups
               .optimize(df, stacks)
-              .reduce_exposure(df)
+              .reduce_exposure(df, stacks)
               .sort_by_points())
     
     return lineups
