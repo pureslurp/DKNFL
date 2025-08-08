@@ -10,6 +10,12 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from bs4 import BeautifulSoup
 from dfs_stack import fix_name
+import time
+from selenium.common.exceptions import (
+    TimeoutException,
+    StaleElementReferenceException,
+    WebDriverException
+)
 
 class DKScoring:
     """Calculate DraftKings fantasy points for different stat categories"""
@@ -99,6 +105,7 @@ class FootballDBScraper:
         """Initialize Selenium WebDriver"""
         self.driver = webdriver.Firefox()
         self.driver.implicitly_wait(10)  # Reduce from 120 to improve performance
+        self.wait = WebDriverWait(self.driver, 10)
         return self.driver
         
     def get_game_links(self) -> List[str]:
@@ -171,6 +178,14 @@ class FootballDBScraper:
         """Process a single game's box score"""
         try:
             self.driver.get(f"{self.base_url}{game_url}")
+            
+            # Add explicit wait for stats div
+            self.wait.until(
+                EC.presence_of_element_located((By.ID, "divBox_stats"))
+            )
+            
+            # Add small delay to ensure all content is loaded
+            time.sleep(2)
             
             soup = BeautifulSoup(self.driver.page_source, "html.parser")
             stats_div = soup.find('div', {"id": "divBox_stats"})

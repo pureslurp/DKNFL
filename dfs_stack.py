@@ -731,17 +731,11 @@ def calc_Fum_Pts(data, WEEK):
 
 def generate_line_up_from_stack(df: pd.DataFrame, stacks: list[Stack], NoL: int = 6) -> LineUps:
     """
-    Generate lineups based on multiple stacks
-    
-    Args:
-        df: DataFrame containing all players and info
-        stacks: List of Stack objects to build lineups around
-        NoL: Number of lineups to generate per stack
-        
-    Returns:
-        pd.DataFrame: DataFrame with all generated lineups sorted by highest projected scores
+    Generate lineups based on multiple stacks with duplicate prevention while maintaining lineup count
     """
     all_lineups = []
+    lineup_signatures = set()
+    target_total_lineups = NoL * len(stacks)
     
     for stack in stacks:
         print(f"\nGenerating lineups for stack:")
@@ -765,7 +759,7 @@ def generate_line_up_from_stack(df: pd.DataFrame, stacks: list[Stack], NoL: int 
             wr_df = wr_df.sort_values(by='value', ascending=False)
             wr1 = Player.from_dataframe(wr_df.iloc[0:1])
 
-        # Pre-filter and sort positions by points per dollar (value)
+        # Pre-filter and sort positions by value
         rb_df = position_df(df, "RB").copy()
         rb_df.loc[:, 'value'] = rb_df['Proj DFS Total'] / rb_df['Salary']
         rb_df = rb_df.sort_values(by='value', ascending=False).head(20)
@@ -778,7 +772,6 @@ def generate_line_up_from_stack(df: pd.DataFrame, stacks: list[Stack], NoL: int 
         flex_df.loc[:, 'value'] = flex_df['Proj DFS Total'] / flex_df['Salary']
         flex_df = flex_df.sort_values(by='value', ascending=False).head(20)
 
-        # Handle DST separately
         dst_df = df[df["Position"] == "DST"].copy()
         dst_df = dst_df[dst_df["TeamAbbrev"] != opp_team]
         dst_df.loc[:, 'value'] = dst_df['Proj DFS Total'] / dst_df['Salary']
@@ -786,64 +779,128 @@ def generate_line_up_from_stack(df: pd.DataFrame, stacks: list[Stack], NoL: int 
         dst_df.reset_index(drop=True, inplace=True)
 
         stack_lineups = 0
-        with tqdm(total=NoL, desc="Generating lineups") as pbar:
-            # Systematic lineup generation
-            for rb1_idx in range(len(rb_df)):
-                rb1 = Player.from_dataframe(rb_df.iloc[rb1_idx:rb1_idx+1])
+        attempts = 0
+        max_attempts = 20000  # Increased from 5000
+        best_lineups = []  # Store all valid lineups for this stack
+        
+        with tqdm(total=NoL * 2, desc="Generating lineup candidates") as pbar:  # Generate 2x candidates
+            while stack_lineups < (NoL * 2) and attempts < max_attempts:
+                # Randomly select positions to increase variety
+                rb1 = Player.from_dataframe(rb_df.sample(n=1))
+                rb2 = Player.from_dataframe(rb_df.sample(n=1))
+                wr2 = Player.from_dataframe(wr_df.sample(n=1))
+                wr3 = Player.from_dataframe(wr_df.sample(n=1))
+                flex = Player.from_dataframe(flex_df.sample(n=1))
+                dst = Player.from_dataframe(dst_df.sample(n=1))
                 
-                for rb2_idx in range(rb1_idx + 1, len(rb_df)):
-                    rb2 = Player.from_dataframe(rb_df.iloc[rb2_idx:rb2_idx+1])
-                    
-                    for wr2_idx in range(len(wr_df)):
-                        wr2 = Player.from_dataframe(wr_df.iloc[wr2_idx:wr2_idx+1])
-                        
-                        for wr3_idx in range(wr2_idx + 1, len(wr_df)):
-                            wr3 = Player.from_dataframe(wr_df.iloc[wr3_idx:wr3_idx+1])
-                            
-                            for flex_idx in range(len(flex_df)):
-                                flex = Player.from_dataframe(flex_df.iloc[flex_idx:flex_idx+1])
-                                
-                                for dst_idx in range(len(dst_df)):
-                                    dst = Player.from_dataframe(dst_df.iloc[dst_idx:dst_idx+1])
-                                    
-                                    # Create and validate lineup
-                                    lineup = LineUp(qb, rb1, rb2, wr1, wr2, wr3, te, flex, dst)
-                                    
-                                    if (lineup.salary <= 50000 and 
-                                        not lineup.duplicates() and 
-                                        not lineup.players_on_same_team()):
-                                        
-                                        all_lineups.append(lineup)
-                                        stack_lineups += 1
-                                        pbar.update(1)
-                                        
-                                        if stack_lineups >= NoL:
-                                            break
-                                
-                                if stack_lineups >= NoL:
-                                    break
-                            
-                            if stack_lineups >= NoL:
-                                break
-                        
-                        if stack_lineups >= NoL:
-                            break
-                    
-                    if stack_lineups >= NoL:
-                        break
+                # Create lineup
+                lineup = LineUp(qb, rb1, rb2, wr1, wr2, wr3, te, flex, dst)
                 
-                if stack_lineups >= NoL:
-                    break
+                # Generate unique signature
+                lineup_signature = frozenset(p.name for p in lineup.players.values())
+                
+                # Check if lineup is valid and unique
+                if (lineup.salary <= 50000 and 
+                    not lineup.duplicates() and 
+                    not lineup.players_on_same_team() and
+                    lineup_signature not in lineup_signatures and
+                    len(set([p.team for p in lineup.players.values()])) >= 3):  # Ensure team diversity
+                    
+                    lineup_signatures.add(lineup_signature)
+                    all_lineups.append(lineup)
+                    stack_lineups += 1
+                    pbar.update(1)
+    
+    if len(all_lineups) < target_total_lineups:
+        print(f"\nWarning: Could only generate {len(all_lineups)} unique lineups")
     
     lineups = LineUps(all_lineups)
-
-    # Optimize and reduce exposure
-    lineups = (lineups
-              .optimize(df, stacks)
-              .reduce_exposure(df, stacks)
-              .sort_by_points())
     
-    return lineups
+    # Optimize lineups while maintaining uniqueness
+    print("\nOptimizing lineups...")
+    optimized_lineups = []
+    seen_signatures = set()
+    
+    for i, lineup in enumerate(lineups.lineups):
+        stack_index = i // NoL
+        if stack_index < len(stacks):
+            try:
+                optimized = lineup.optimize(df, stacks[stack_index].wrte)
+                opt_signature = frozenset(p.name for p in optimized.players.values())
+                if opt_signature not in seen_signatures:
+                    seen_signatures.add(opt_signature)
+                    optimized_lineups.append(optimized)
+                else:
+                    # If optimization created a duplicate, keep original
+                    orig_signature = frozenset(p.name for p in lineup.players.values())
+                    seen_signatures.add(orig_signature)
+                    optimized_lineups.append(lineup)
+            except Exception as e:
+                print(f"Error optimizing lineup {i}: {e}")
+                orig_signature = frozenset(p.name for p in lineup.players.values())
+                seen_signatures.add(orig_signature)
+                optimized_lineups.append(lineup)
+    
+    lineups = LineUps(optimized_lineups)
+    
+    # Reduce exposure while maintaining lineup count
+    max_iterations = 100
+    iteration = 0
+    
+    while iteration < max_iterations:
+        exposures = lineups.check_exposures(max_exposure=0.80)
+        over_exposed = {
+            player: exp for player, exp in exposures.items() 
+            if exp > 0.66
+        }
+        
+        if not over_exposed:
+            print("\nAll player exposures are within limits")
+            break
+            
+        print(f"\nIteration {iteration + 1}: Reducing exposure for:")
+        for player, exposure in over_exposed.items():
+            print(f"{player}: {exposure:.1%}")
+        
+        changes_made = False
+        # Sort lineups by total points to try replacing in lower-scoring lineups first
+        lineups.sort_by_points()
+        
+        for player_name in over_exposed:
+            # Start from the bottom (worst performing lineups)
+            for i in range(len(lineups.lineups) - 1, -1, -1):
+                lineup = lineups.lineups[i]
+                for pos, player in lineup.players.items():
+                    if str(player) == player_name:
+                        # Try multiple replacements until finding a valid one
+                        max_replacement_attempts = 10
+                        for _ in range(max_replacement_attempts):
+                            new_lineup = lineup.replace_player(
+                                player_name,
+                                pos,
+                                df,
+                                current_exposures=exposures
+                            )
+                            if new_lineup:
+                                new_signature = frozenset(p.name for p in new_lineup.players.values())
+                                if new_signature not in seen_signatures:
+                                    seen_signatures.add(new_signature)
+                                    lineups.lineups[i] = new_lineup
+                                    changes_made = True
+                                    break
+                        if changes_made:
+                            break
+                if changes_made:
+                    break
+        
+        if not changes_made:
+            print("\nWarning: Could not reduce exposure further while maintaining unique lineups")
+            break
+            
+        iteration += 1
+    
+    # Final sort by points
+    return lineups.sort_by_points()
 
 def find_opponent(data: pd.Series) -> str:
     """
@@ -1039,9 +1096,67 @@ def defense(dk_pool: pd.DataFrame, week: int) -> pd.DataFrame:
         print(f"Error processing defense data: {e}")
         raise
 
+def calculate_defense_adjustment(row: pd.Series, defense_stats: pd.DataFrame) -> float:
+    """
+    Calculate score adjustment based on defensive matchup
+    
+    Args:
+        row: Player data row containing position and opponent
+        defense_stats: DataFrame with defense vs position stats
+        
+    Returns:
+        float: Score adjustment factor
+    """
+    try:
+        # Create Player object to use opponent property
+        player = Player.from_dataframe(row)
+        position = player.position
+        
+        if position == 'DST':
+            return 0  # No adjustment for defense
+            
+        # Get defensive stats for this matchup
+        defense_data = defense_stats[
+            (defense_stats['Team'] == player.opponent) & 
+            (defense_stats['Position'] == position)
+        ]
+        
+        if len(defense_data) == 0:
+            return 0
+            
+        # Get all teams' averages for this position
+        position_stats = defense_stats[defense_stats['Position'] == position]
+        position_avg = position_stats['avg'].mean()
+        position_std = position_stats['avg'].std()  # Standard deviation of team averages
+        
+        # Get this team's average points allowed
+        team_avg = defense_data['avg'].iloc[0]
+        
+        # Calculate z-score based on where this team stands among all teams
+        z_score = (team_avg - position_avg) / position_std if position_std > 0 else 0
+        
+        # Convert to adjustment factor (range: -15% to +15%)
+        adjustment = z_score * 0.05  # 5% per standard deviation
+        adjustment = max(min(adjustment, 0.15), -0.15)  # Cap at ±15%
+        
+        # Calculate actual point adjustment based on original score
+        original_score = row['Original_Score']
+        return original_score * adjustment
+        
+    except Exception as e:
+        print(f"Warning: Could not calculate defense adjustment: {e}")
+        return 0
+
 def process_player_data(dk_pool: pd.DataFrame, dk_stat: pd.DataFrame, week: int, args: argparse.Namespace, path: str) -> pd.DataFrame:
     """Process and clean player data for DFS analysis"""
     
+    # Load defense vs position stats
+    try:
+        defense_stats = pd.read_csv('2024/defense_vs_position_summary.csv')
+    except Exception as e:
+        print(f"Warning: Could not load defense stats: {e}")
+        defense_stats = None
+
     # Clean and combine data
     dk_stat["Name"] = dk_stat["Name"].apply(fix_name)
     dk_defense = defense(dk_pool, week)
@@ -1057,6 +1172,43 @@ def process_player_data(dk_pool: pd.DataFrame, dk_stat: pd.DataFrame, week: int,
     df_main[TOTAL_DICT[args.test]] = df_main['DFS Total'].replace('', np.nan)
     df_main.dropna(subset=[TOTAL_DICT[args.test]], inplace=True)
     
+    # Store original scores before adjustment
+    score_column = TOTAL_DICT[args.test]
+    df_main['Original_Score'] = df_main[score_column]
+    
+    # Apply defensive adjustments if stats are available
+    if defense_stats is not None:
+        print("Applying defensive matchup adjustments...")
+        # Calculate point adjustments
+        point_adjustments = df_main.apply(
+            lambda row: calculate_defense_adjustment(row, defense_stats), 
+            axis=1
+        )
+        
+        # Store adjustment percentages
+        df_main['Defense_Adjustment'] = point_adjustments / df_main['Original_Score']
+        
+        # Apply point adjustments to scores
+        df_main[score_column] = df_main['Original_Score'] + point_adjustments
+        
+        # Store point adjustments
+        df_main['Points_Adjusted'] = point_adjustments
+        
+        # Print summary of adjustments
+        print("\nDefensive Matchup Adjustments Summary:")
+        print(f"Average adjustment: {(point_adjustments / df_main['Original_Score']).mean():.1%}")
+        print(f"Max positive adjustment: {(point_adjustments / df_main['Original_Score']).max():.1%}")
+        print(f"Max negative adjustment: {(point_adjustments / df_main['Original_Score']).min():.1%}")
+        
+        # Print top 5 positive and negative adjustments
+        print("\nTop 5 Positive Adjustments:")
+        top_adj = df_main.nlargest(5, 'Points_Adjusted')[['Name', 'Position', 'Defense_Adjustment', 'Points_Adjusted']]
+        print(top_adj.to_string(float_format=lambda x: f"{x:.2%}" if abs(x) < 1 else f"{x:.1f}"))
+        
+        print("\nTop 5 Negative Adjustments:")
+        bottom_adj = df_main.nsmallest(5, 'Points_Adjusted')[['Name', 'Position', 'Defense_Adjustment', 'Points_Adjusted']]
+        print(bottom_adj.to_string(float_format=lambda x: f"{x:.2%}" if abs(x) < 1 else f"{x:.1f}"))
+    
     # Save forward-looking data if requested
     if args.test == "forward":
         df_main.to_csv(f"{path}dashboard.csv")
@@ -1069,18 +1221,15 @@ def process_player_data(dk_pool: pd.DataFrame, dk_stat: pd.DataFrame, week: int,
         'Other': (df_main["Position"].isin(["RB", "WR"])) & (df_main["Salary"] > 3100)
     }
     
-    # Apply filters and combine
     filtered_frames = [
-        df_main[position_filters['QB']],  # QBs
-        df_main[position_filters['TE']],  # TEs above salary threshold
-        df_main[position_filters['DEF']],  # Defense
-        df_main[position_filters['Other']]  # Other positions above salary threshold
+        df_main[position_filters['QB']],
+        df_main[position_filters['TE']],
+        df_main[position_filters['DEF']],
+        df_main[position_filters['Other']]
     ]
     
-    # Combine filtered data
     df_main = pd.concat(filtered_frames)
     
-    # Final calculations
     df_main.drop(["AvgPointsPerGame"], axis=1, inplace=True)
     df_main["Value"] = (df_main[TOTAL_DICT[args.test]] / df_main["Salary"]) * 1000
     
