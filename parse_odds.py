@@ -60,37 +60,25 @@ class DFSPointsCalculator:
     
     @staticmethod
     def touchdowns(odds: float) -> float:
-        """
-        Calculate DFS points for touchdowns using a probability-based model
-        
-        Args:
-            odds: American odds for scoring at least one touchdown
-            
-        Returns:
-            float: Expected DFS points from touchdowns
-        """
+        """Calculate DFS points for touchdowns using a probability-based model"""
         try:
-            # Convert American odds to probability of scoring at least one TD
-            if odds < 0:
-                prob_1_td = abs(odds) / (abs(odds) + 100)
+            if odds <= -100:
+                prob_1_td = 1.0  # Negative odds = guaranteed first TD
             else:
+                # Convert positive American odds to probability
                 prob_1_td = 100 / (odds + 100)
                 
             # Calculate probability of multiple TDs using geometric distribution
-            # P(2|1) = P(1) * 0.25  # Assuming 25% chance of another TD if you score one
-            # P(3|2) = P(2) * 0.15  # Assuming 15% chance of third TD if you score two
-            # P(4|3) = P(3) * 0.10  # Assuming 10% chance of fourth TD if you score three
+            prob_2_td = prob_1_td * 0.25  # 25% chance of 2nd TD if scored first
+            prob_3_td = prob_2_td * 0.15   # 15% chance of 3rd TD if scored second
+            prob_4_td = prob_3_td * 0.10   # 10% chance of 4th TD if scored third
             
-            prob_2_td = prob_1_td * 0.25
-            prob_3_td = prob_2_td * 0.15
-            prob_4_td = prob_3_td * 0.10
-            
-            # Calculate expected touchdown points
+            # Calculate expected points
             expected_points = (
-                (prob_1_td * 6) +           # Points from 1 TD
-                (prob_2_td * 6) +           # Points from 2nd TD
-                (prob_3_td * 6) +           # Points from 3rd TD
-                (prob_4_td * 6)             # Points from 4th TD
+                (prob_1_td * 6) +       # First TD
+                (prob_2_td * 6) +       # Second TD  
+                (prob_3_td * 6) +       # Third TD
+                (prob_4_td * 6)         # Fourth TD
             )
             
             return expected_points

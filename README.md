@@ -1,70 +1,158 @@
-# Overview
-This repository predicts DraftKings NFL contest lineups based on optimized player prop data.
+# DKNFL - DraftKings NFL DFS Lineup Optimizer
 
-# Quick Start
-There are 2 scripts needed to run predictions, in order. Each script requires the argument of "Week"
-1. parse_odds.py
-2. dfs_stack.py
+## Overview
+This repository contains a comprehensive suite of tools for predicting and optimizing DraftKings NFL contest lineups based on player prop data, historical performance, and advanced analytics.
 
-Example of running full prediction for Week 12
-1. Create a folder in 2024 for the current week,"2024/WEEK12"
-2. run `python3 parse_odds.py 12` in the target location
-3. Download DKSalaries from DraftKings and put them in the folder created with the naming convention "DKSalaries-Week12
-4. run `python3 dfs_stack.py 12` in the target location
+## Quick Start
+To generate predictions for a specific week, follow these steps in order:
 
-The last script will output 24 lineups ranked from best to worst, dk_lineups_week12.cvs.
+1. **Create week folder**: Create a folder in `2024/` for the current week (e.g., `2024/WEEK12`)
+2. **Parse odds**: Run `python3 parse_odds.py 12` to fetch live player props
+3. **Download salaries**: Download DKSalaries from DraftKings and save as `DKSalaries-Week12.csv` in the week folder
+4. **Generate lineups**: Run `python3 dfs_stack.py 12` to create optimized lineups
 
-# Predictions
+The final script outputs 24 lineups ranked from best to worst in `dk_lineups_week12.csv`.
 
-## parse_odds.py
+## Core Scripts
 
-#### pre-req
-- Firefox installed
+### 1. parse_odds.py
+**Purpose**: Fetches live player prop data and converts it to DFS projections
 
-#### inputs
-- Folder created in 2023 for the week to be predicted, e.g. WEEK12
+**Prerequisites**:
+- Firefox browser installed
+- Internet connection for live odds
 
-#### description
-This script will pull live player props at the time of execution, for best results it is recommended to run this within 90 minutes of kick-off. **Note** -- Since the script pulls live odds, you can't pull player prop data from a past week. If you try to pass a past week, it will overwrite that weeks data with the live player prop data from the time at which you ran the script.
-This script will then turn the player prop data output from the parse_odds.py script into dfs totals.
+**Inputs**:
+- Week number as command line argument
+- Target folder in `2024/` directory
 
-#### arguments
-1 required argument: the week as an int, e.g. 12
+**Description**:
+Pulls live player props at execution time. For best results, run within 90 minutes of kickoff. **Note**: This script overwrites existing data for past weeks with current live data.
 
-#### example
-Example for Week 12 Prediction
-`python3 parse_odds.py 12`
+**Usage**:
+```bash
+python3 parse_odds.py 12
+```
 
-#### output
-- NFL_Proj_DFS.csv
+**Output**:
+- `NFL_Proj_DFS.csv` - Player projections for DFS
 
-## dfs_stack.py
+### 2. dfs_stack.py
+**Purpose**: Creates optimized DraftKings lineups using QB-WR/TE stacks
 
-#### pre-req
-- parse_odds.py has already been ran
+**Prerequisites**:
+- `parse_odds.py` must be run first
+- `NFL_Proj_DFS.csv` from parse_odds.py
+- `DKSalaries-Week{WEEK}.csv` from DraftKings
 
-#### inputs
-- NFL_Proj_DFS.csv from parse_odds.py
-- DKSalaries csv from DraftKings in the WEEK{WEEK} folder labeled DKSalaries-WEEK{WEEK}, e.g. WEEK12/DKSalaries-WEEK12
+**Description**:
+Generates 4 different stacks (2 based on highest total, 2 based on best value) and creates 24 optimized lineups with exposure management.
 
-#### description
-This script will take the data from parse_odds.py and use it to create 4 stacks, 2 based on overall highest total and 2 based on overall value
+**Usage**:
+```bash
+# For predictions (default)
+python3 dfs_stack.py 12
 
-#### arguments
-1 required argument, 1 optional: 
-- required: the week as an int, e.g. 12
-- optional: "forward" (default) to predict, and "backtest" to backtest
+# For backtesting
+python3 dfs_stack.py 12 backtest
+```
 
-#### example
-Example for Week 12 Prediction
-`python3 dfs_stack.py 12`
+**Output**:
+- `dk_lineups_week{WEEK}.csv` - 24 ranked lineups
 
-#### output
-- dk_lineups_week{WEEK}.csv
+## Additional Tools
 
+### 3. dfs_box_scores.py
+**Purpose**: Processes actual game results for backtesting and analysis
 
-# Backtest
-_todo_
+**Description**:
+Compares predicted lineups against actual player performance to evaluate prediction accuracy.
 
-1. dfs_box_scores.py
-2. dfs_stack.py
+### 4. merge_scores.py
+**Purpose**: Merges predicted scores with actual game results
+
+**Description**:
+Creates comprehensive datasets combining projections and actual performance for analysis.
+
+### 5. dashboard.py
+**Purpose**: Generates analysis dashboards and reports
+
+**Description**:
+Creates visualizations and summary statistics for lineup performance and player analysis.
+
+### 6. league_analysis.py
+**Purpose**: Analyzes league-wide trends and patterns
+
+**Description**:
+Provides insights into league performance, team matchups, and strategic considerations.
+
+### 7. parse_odds.py (Detailed)
+**Purpose**: Advanced odds parsing and market analysis
+
+**Description**:
+Enhanced version of the basic odds parser with additional market analysis capabilities.
+
+## Utility Scripts
+
+### utils.py
+Contains helper functions, constants, and data structures used across the project:
+- Team abbreviations and mappings
+- Position definitions
+- Common utility functions
+
+### nfl_dfs.py
+Basic NFL DFS utilities and helper functions.
+
+## Project Structure
+
+```
+DKNFL/
+├── 2024/                    # Current season data
+│   ├── WEEK1/              # Week-specific folders
+│   ├── WEEK2/
+│   └── ...
+├── parse_odds.py           # Live odds parser
+├── dfs_stack.py            # Main lineup optimizer
+├── dfs_box_scores.py       # Results processor
+├── merge_scores.py         # Score merger
+├── dashboard.py            # Analysis dashboard
+├── league_analysis.py      # League analysis
+├── utils.py                # Utility functions
+├── requirements.txt        # Python dependencies
+└── README.md              # This file
+```
+
+## Requirements
+
+Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+## Workflow
+
+1. **Weekly Setup**: Create week folder and download DraftKings salaries
+2. **Data Collection**: Run parse_odds.py to get live projections
+3. **Lineup Generation**: Run dfs_stack.py to create optimized lineups
+4. **Analysis**: Use additional tools for backtesting and analysis
+5. **Results Processing**: After games, use dfs_box_scores.py to evaluate performance
+
+## Features
+
+- **Live Data Integration**: Real-time player prop data
+- **Advanced Stacking**: QB-WR/TE correlation optimization
+- **Exposure Management**: Prevents over-exposure to individual players
+- **Multiple Strategies**: Total-based and value-based approaches
+- **Backtesting**: Historical performance analysis
+- **Comprehensive Analysis**: Dashboard and reporting tools
+
+## Notes
+
+- Run parse_odds.py close to game time for most accurate projections
+- The system generates 24 lineups with different strategies and exposures
+- All scripts support both prediction and backtesting modes
+- Historical data from 2022 and 2023 seasons is preserved for analysis
+
+## Contributing
+
+This project is designed for personal use in NFL DFS contests. Please ensure compliance with DraftKings terms of service and local gambling regulations.
