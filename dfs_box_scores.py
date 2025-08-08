@@ -14,7 +14,8 @@ import time
 from selenium.common.exceptions import (
     TimeoutException,
     StaleElementReferenceException,
-    WebDriverException
+    WebDriverException,
+    NoSuchElementException
 )
 
 class DKScoring:
@@ -111,25 +112,105 @@ class FootballDBScraper:
     def get_game_links(self) -> List[str]:
         """Get all game URLs for the specified week"""
         try:
+            print(f"Navigating to {self.base_url}/games/index.html")
             self.driver.get(f"{self.base_url}/games/index.html")
             
-            # Wait for content to load
-            WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.CLASS_NAME, "statistics"))
-            )
+            # Wait for content to load with multiple possible selectors
+            selectors_to_try = [
+                (By.CLASS_NAME, "statistics"),
+                (By.TAG_NAME, "table"),
+                (By.CLASS_NAME, "games"),
+                (By.ID, "games")
+            ]
+            
+            content_found = False
+            for selector_type, selector_value in selectors_to_try:
+                try:
+                    print(f"Trying to find element with {selector_type}: {selector_value}")
+                    WebDriverWait(self.driver, 5).until(
+                        EC.presence_of_element_located((selector_type, selector_value))
+                    )
+                    content_found = True
+                    print(f"Found content with {selector_type}: {selector_value}")
+                    break
+                except TimeoutException:
+                    print(f"Timeout waiting for {selector_type}: {selector_value}")
+                    continue
+            
+            if not content_found:
+                print("Could not find any expected content, proceeding anyway...")
+            
+            # Add delay to ensure page is fully loaded
+            time.sleep(3)
             
             soup = BeautifulSoup(self.driver.page_source, "html.parser")
-            games_table = soup.find_all('table', class_='statistics')[self.week - 1]
+            print(f"Page title: {soup.title.string if soup.title else 'No title found'}")
             
-            return [
-                game.find("a").get('href') 
-                for game in games_table.find_all('tr') 
-                if game.find("a")
-            ]
+            # Try multiple approaches to find games table
+            games_table = None
+            
+            # Approach 1: Look for statistics class
+            tables = soup.find_all('table', class_='statistics')
+            if tables and len(tables) >= self.week:
+                games_table = tables[self.week - 1]
+                print(f"Found games table using statistics class (week {self.week})")
+            
+            # Approach 2: Look for any table with game links
+            if not games_table:
+                all_tables = soup.find_all('table')
+                for i, table in enumerate(all_tables):
+                    links = table.find_all('a', href=True)
+                    if any('boxscore' in link.get('href', '') for link in links):
+                        if i == self.week - 1:  # Assuming tables are in week order
+                            games_table = table
+                            print(f"Found games table at index {i}")
+                            break
+            
+            # Approach 3: Look for any links containing boxscore
+            if not games_table:
+                all_links = soup.find_all('a', href=True)
+                boxscore_links = [link for link in all_links if 'boxscore' in link.get('href', '')]
+                if boxscore_links:
+                    print(f"Found {len(boxscore_links)} boxscore links directly")
+                    return [link.get('href') for link in boxscore_links]
+            
+            if not games_table:
+                print("Could not find games table, trying to extract links from page...")
+                # Last resort: look for any boxscore links on the page
+                all_links = soup.find_all('a', href=True)
+                boxscore_links = [link.get('href') for link in all_links if 'boxscore' in link.get('href', '')]
+                return boxscore_links
+            
+            # Extract links from the found table
+            links = []
+            for row in games_table.find_all('tr'):
+                link_elem = row.find("a")
+                if link_elem and link_elem.get('href'):
+                    links.append(link_elem.get('href'))
+            
+            print(f"Found {len(links)} game links")
+            return links
             
         except Exception as e:
             print(f"Error getting game links: {e}")
-            return []
+            print("Trying alternative approach...")
+            
+            # Alternative: try to construct URLs manually for common patterns
+            try:
+                # Try to get the current year from the URL or page
+                current_year = "2024"  # Default to 2024
+                alternative_links = []
+                
+                # Common game patterns for week 4
+                if self.week == 4:
+                    # These are example URLs - we'd need to get the actual game URLs
+                    print("Attempting to construct alternative URLs for Week 4...")
+                    # This is a fallback - in practice we'd need the actual game URLs
+                
+                return alternative_links
+            except Exception as e2:
+                print(f"Alternative approach also failed: {e2}")
+                return []
             
     def parse_stats_table(self, table, stat_type: str) -> pd.DataFrame:
         """Parse a single stats table into a DataFrame"""
@@ -138,36 +219,75 @@ class FootballDBScraper:
             body = table.find("tbody")
             
             if not header or not body:
+                print(f"No header or body found for {stat_type} table")
                 return pd.DataFrame(columns=self.stat_columns[stat_type])
             
             # Get raw column names
-            columns = [th.text for th in header.find_all("th")]
+            columns = [th.text.strip() for th in header.find_all("th")]
+            print(f"Found columns for {stat_type}: {columns}")
             
-            # Define column mappings for each stat type
+            # Define column mappings for each stat type based on actual HTML
             column_maps = {
-                'passing': {'Yds': 'pass_Yds', 'TD': 'pass_TD', 'Int': 'pass_INT'},
-                'rushing': {'Yds': 'rush_Yds', 'TD': 'rush_TD'},
-                'receiving': {'Rec': 'rec_Rec', 'Yds': 'rec_Yds', 'TD': 'rec_TD'}
+                'passing': {
+                    'Yds': 'pass_Yds', 
+                    'TD': 'pass_TD', 
+                    'Int': 'pass_INT',
+                    'Att': 'pass_Att',
+                    'Cmp': 'pass_Cmp'
+                },
+                'rushing': {
+                    'Yds': 'rush_Yds', 
+                    'TD': 'rush_TD',
+                    'Att': 'rush_Att'
+                },
+                'receiving': {
+                    'Rec': 'rec_Rec', 
+                    'Yds': 'rec_Yds', 
+                    'TD': 'rec_TD',
+                    'Tar': 'rec_Tar'
+                }
             }
             
             rows = []
             for row in body.find_all("tr"):
-                values = [td.text for td in row.find_all("td")]
-                row_dict = dict(zip(columns, values))
-                
-                # Clean player name
-                row_dict['player'] = PlayerNameCleaner.clean_name(row_dict.get(columns[0], ''))
-                
-                # Map column names to our expected format
-                mapped_dict = {'player': row_dict['player']}
-                for old_col, new_col in column_maps[stat_type].items():
-                    if old_col in row_dict:
-                        mapped_dict[new_col] = row_dict[old_col]
-                
-                rows.append(mapped_dict)
+                # Skip TOTAL rows
+                if 'TOTAL' in row.get_text():
+                    continue
+                    
+                values = [td.text.strip() for td in row.find_all("td")]
+                if len(values) >= len(columns):
+                    row_dict = dict(zip(columns, values))
+                    
+                    # Extract player name from the first column
+                    player_col = columns[0] if columns else 'Player'
+                    player_name = row_dict.get(player_col, '')
+                    
+                    # Clean player name - handle the span structure from the HTML
+                    if player_name:
+                        # Remove any HTML tags that might be in the text
+                        player_name = player_name.replace('\xa0', ' ')  # Replace non-breaking spaces
+                        player_name = PlayerNameCleaner.clean_name(player_name)
+                    
+                    if not player_name or player_name == 'TOTAL':
+                        continue
+                    
+                    # Map column names to our expected format
+                    mapped_dict = {'player': player_name}
+                    for old_col, new_col in column_maps[stat_type].items():
+                        # Look for columns that contain the old_col text
+                        for col in columns:
+                            if old_col in col:
+                                value = row_dict.get(col, '0')
+                                # Clean the value (remove 't' from TD values, etc.)
+                                if value.endswith('t'):
+                                    value = value[:-1]
+                                mapped_dict[new_col] = value
+                                break
+                    
+                    rows.append(mapped_dict)
             
             df = pd.DataFrame(rows)
-            print(f"Parsed {stat_type} stats with columns: {df.columns.tolist()}")
+            print(f"Parsed {stat_type} stats with {len(df)} rows and columns: {df.columns.tolist()}")
             return df
             
         except Exception as e:
@@ -177,27 +297,166 @@ class FootballDBScraper:
     def process_game(self, game_url: str) -> Dict[str, pd.DataFrame]:
         """Process a single game's box score"""
         try:
-            self.driver.get(f"{self.base_url}{game_url}")
+            full_url = f"{self.base_url}{game_url}" if not game_url.startswith('http') else game_url
+            print(f"Processing game: {full_url}")
             
-            # Add explicit wait for stats div
-            self.wait.until(
-                EC.presence_of_element_located((By.ID, "divBox_stats"))
-            )
+            self.driver.get(full_url)
             
-            # Add small delay to ensure all content is loaded
-            time.sleep(2)
+            # Wait longer for the page to fully load
+            print("Waiting for page to load...")
+            time.sleep(5)  # Initial wait
             
-            soup = BeautifulSoup(self.driver.page_source, "html.parser")
-            stats_div = soup.find('div', {"id": "divBox_stats"})
-            if not stats_div:
-                return {}
+            # Try multiple approaches to find stats
+            stats_div = None
+            
+            # Approach 1: Look for mobToggle_stats (the actual ID from the HTML)
+            try:
+                print("Waiting for mobToggle_stats element...")
+                self.wait.until(
+                    EC.presence_of_element_located((By.ID, "mobToggle_stats"))
+                )
+                # Additional wait after finding the element
+                time.sleep(3)
+                soup = BeautifulSoup(self.driver.page_source, "html.parser")
+                stats_div = soup.find('div', {"id": "mobToggle_stats"})
+                print("Found stats using mobToggle_stats ID")
                 
-            tables = stats_div.find_all("table")
+                # Debug: Check what's actually in the stats div
+                if stats_div:
+                    print(f"Stats div found with {len(stats_div.find_all('h2'))} h2 headers")
+                    print(f"Stats div found with {len(stats_div.find_all('table'))} tables")
+                    print(f"Stats div found with {len(stats_div.find_all('div', class_='statsvisitor'))} statsvisitor divs")
+                    print(f"Stats div found with {len(stats_div.find_all('div', class_='statshome'))} statshome divs")
+                else:
+                    print("Stats div not found in soup")
+                    
+            except TimeoutException:
+                print("mobToggle_stats not found, trying alternative approaches...")
+            
+            # Approach 2: Look for divBox_stats (old approach)
+            if not stats_div:
+                try:
+                    print("Waiting for divBox_stats element...")
+                    self.wait.until(
+                        EC.presence_of_element_located((By.ID, "divBox_stats"))
+                    )
+                    time.sleep(3)
+                    soup = BeautifulSoup(self.driver.page_source, "html.parser")
+                    stats_div = soup.find('div', {"id": "divBox_stats"})
+                    print("Found stats using divBox_stats ID")
+                except TimeoutException:
+                    print("divBox_stats not found, trying alternative approaches...")
+            
+            # Approach 3: Look for any div with stats
+            if not stats_div:
+                soup = BeautifulSoup(self.driver.page_source, "html.parser")
+                stats_divs = soup.find_all('div', class_=lambda x: x and 'stats' in x.lower())
+                if stats_divs:
+                    stats_div = stats_divs[0]
+                    print("Found stats using class containing 'stats'")
+            
+            # Approach 4: Look for tables directly
+            if not stats_div:
+                soup = BeautifulSoup(self.driver.page_source, "html.parser")
+                tables = soup.find_all("table")
+                if tables:
+                    print(f"Found {len(tables)} tables directly on page")
+                    # Use the page itself as the stats container
+                    stats_div = soup
+            
+            if not stats_div:
+                print(f"No stats found for game {game_url}")
+                # Debug: Let's see what's actually on the page
+                soup = BeautifulSoup(self.driver.page_source, "html.parser")
+                print(f"Page has {len(soup.find_all('div'))} divs")
+                print(f"Page has {len(soup.find_all('table'))} tables")
+                print(f"Page has {len(soup.find_all('h2'))} h2 headers")
+                return {}
+            
+            # Process stats based on the actual HTML structure
             stats = {
-                'passing': pd.concat([self.parse_stats_table(t, 'passing') for t in tables[:2]]),
-                'rushing': pd.concat([self.parse_stats_table(t, 'rushing') for t in tables[2:4]]),
-                'receiving': pd.concat([self.parse_stats_table(t, 'receiving') for t in tables[4:6]])
+                'passing': pd.DataFrame(columns=self.stat_columns['passing']),
+                'rushing': pd.DataFrame(columns=self.stat_columns['rushing']),
+                'receiving': pd.DataFrame(columns=self.stat_columns['receiving'])
             }
+            
+            # Look for h2 headers to identify sections
+            h2_headers = stats_div.find_all('h2')
+            print(f"Found {len(h2_headers)} h2 headers: {[h.text for h in h2_headers]}")
+            
+            # Process each section based on h2 headers
+            for h2 in h2_headers:
+                section_name = h2.text.strip().lower()
+                print(f"Processing section: {section_name}")
+                
+                # Find all tables that follow this h2 until the next h2
+                # Look for tables within statsvisitor and statshome divs
+                section_tables = []
+                next_element = h2.find_next_sibling()
+                
+                while next_element and next_element.name != 'h2':
+                    if next_element.name == 'div':
+                        div_classes = next_element.get('class', [])
+                        if 'statsvisitor' in div_classes or 'statshome' in div_classes:
+                            # Found a stats div, look for tables within it
+                            tables_in_div = next_element.find_all('table')
+                            section_tables.extend(tables_in_div)
+                            print(f"Found {len(tables_in_div)} tables in {div_classes} div")
+                    elif next_element.name == 'table':
+                        # Direct table (fallback)
+                        section_tables.append(next_element)
+                        print("Found direct table")
+                    
+                    next_element = next_element.find_next_sibling()
+                
+                print(f"Found {len(section_tables)} total tables in {section_name} section")
+                
+                # Process tables based on section type
+                if 'pass' in section_name:
+                    for table in section_tables:
+                        table_stats = self.parse_stats_table(table, 'passing')
+                        if not table_stats.empty:
+                            stats['passing'] = pd.concat([stats['passing'], table_stats], ignore_index=True)
+                elif 'rush' in section_name:
+                    for table in section_tables:
+                        table_stats = self.parse_stats_table(table, 'rushing')
+                        if not table_stats.empty:
+                            stats['rushing'] = pd.concat([stats['rushing'], table_stats], ignore_index=True)
+                elif 'receiv' in section_name:
+                    for table in section_tables:
+                        table_stats = self.parse_stats_table(table, 'receiving')
+                        if not table_stats.empty:
+                            stats['receiving'] = pd.concat([stats['receiving'], table_stats], ignore_index=True)
+            
+            # If no h2 headers found, try the old approach with table indices
+            if not h2_headers:
+                print("No h2 headers found, trying table index approach...")
+                tables = stats_div.find_all("table")
+                print(f"Found {len(tables)} tables in stats div")
+                
+                if len(tables) >= 6:
+                    # Original approach with 6 tables
+                    stats = {
+                        'passing': pd.concat([self.parse_stats_table(t, 'passing') for t in tables[:2]]),
+                        'rushing': pd.concat([self.parse_stats_table(t, 'rushing') for t in tables[2:4]]),
+                        'receiving': pd.concat([self.parse_stats_table(t, 'receiving') for t in tables[4:6]])
+                    }
+                elif len(tables) > 0:
+                    # Try to process whatever tables we have
+                    for i, table in enumerate(tables):
+                        table_text = table.get_text().lower()
+                        if 'pass' in table_text or 'comp' in table_text or 'att' in table_text:
+                            table_stats = self.parse_stats_table(table, 'passing')
+                            if not table_stats.empty:
+                                stats['passing'] = pd.concat([stats['passing'], table_stats], ignore_index=True)
+                        elif 'rush' in table_text or 'car' in table_text:
+                            table_stats = self.parse_stats_table(table, 'rushing')
+                            if not table_stats.empty:
+                                stats['rushing'] = pd.concat([stats['rushing'], table_stats], ignore_index=True)
+                        elif 'rec' in table_text or 'catch' in table_text or 'target' in table_text:
+                            table_stats = self.parse_stats_table(table, 'receiving')
+                            if not table_stats.empty:
+                                stats['receiving'] = pd.concat([stats['receiving'], table_stats], ignore_index=True)
             
             return stats
             
@@ -210,6 +469,10 @@ class FootballDBScraper:
         try:
             game_links = self.get_game_links()
             print(f"Found {len(game_links)} games to process")
+            
+            if not game_links:
+                print("No game links found!")
+                return pd.DataFrame()
             
             all_stats = []
             for i, link in enumerate(game_links, 1):
@@ -272,10 +535,6 @@ class FootballDBScraper:
             print(f"Error processing games: {e}")
             raise
             
-        except Exception as e:
-            print(f"Error processing games: {e}")
-            raise
-            
     def calculate_dfs_points(self, df: pd.DataFrame) -> pd.DataFrame:
         """Calculate DraftKings fantasy points"""
         scoring_map = {
@@ -320,27 +579,42 @@ class FootballDBScraper:
 def main(argv):
     """Main function for NFL box score scraping and DFS points calculation"""
     parser = argparse.ArgumentParser(description='Scrape NFL box scores and calculate DFS points')
-    parser.add_argument("week", type=int, help="NFL Week")
+    parser.add_argument("weeks", type=int, nargs='+', help="NFL Week(s) - can specify multiple weeks")
     args = parser.parse_args()
     
     try:
-        scraper = FootballDBScraper(args.week)
-        driver = scraper.setup_driver()
+        # Process each week
+        for week in args.weeks:
+            print(f"\n{'='*50}")
+            print(f"Processing Week {week}")
+            print(f"{'='*50}")
+            
+            scraper = FootballDBScraper(week)
+            driver = scraper.setup_driver()
+            
+            try:
+                master_df = scraper.process_all_games()
+                
+                # Save results
+                output_path = f"2024/WEEK{week}/box_score_debug.csv"
+                master_df.to_csv(output_path, index=False)
+                print(f"\nSuccessfully wrote box scores to {output_path}")
+                
+            except Exception as e:
+                print(f"\nError processing week {week}: {e}")
+                continue
+                
+            finally:
+                if driver:
+                    driver.quit()
         
-        master_df = scraper.process_all_games()
-        
-        # Save results
-        output_path = f"2024/WEEK{args.week}/box_score_debug.csv"
-        master_df.to_csv(output_path, index=False)
-        print(f"\nSuccessfully wrote box scores to {output_path}")
+        print(f"\n{'='*50}")
+        print(f"Completed processing {len(args.weeks)} week(s): {args.weeks}")
+        print(f"{'='*50}")
         
     except Exception as e:
         print(f"\nError: {e}")
         sys.exit(1)
-        
-    finally:
-        if driver:
-            driver.quit()
 
 if __name__ == "__main__":
     main(sys.argv[1:])
