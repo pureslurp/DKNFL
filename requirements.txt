@@ -2,3 +2,7 @@ streamlit
 pandas
 altair
 streamlit-aggrid
+selenium
+beautifulsoup4
+requests
+webdriver-manager
