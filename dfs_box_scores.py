@@ -198,7 +198,7 @@ class FootballDBScraper:
             # Alternative: try to construct URLs manually for common patterns
             try:
                 # Try to get the current year from the URL or page
-                current_year = "2024"  # Default to 2024
+                current_year = "2025"  # Default to 2024
                 alternative_links = []
                 
                 # Common game patterns for week 4
@@ -596,7 +596,7 @@ def main(argv):
                 master_df = scraper.process_all_games()
                 
                 # Save results
-                output_path = f"2024/WEEK{week}/box_score_debug.csv"
+                output_path = f"2025/WEEK{week}/box_score_debug.csv"
                 master_df.to_csv(output_path, index=False)
                 print(f"\nSuccessfully wrote box scores to {output_path}")
                 
