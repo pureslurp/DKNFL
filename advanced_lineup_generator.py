@@ -256,6 +256,13 @@ class LineUp:
         self._teams = None
         self._team_diversity_score = None
 
+    def _clear_cache(self) -> None:
+        """Clear all cached values when players are modified"""
+        self._salary = None
+        self._total = None
+        self._teams = None
+        self._team_diversity_score = None
+
     @property
     def salary(self) -> float:
         """Returns the total salary of the lineup"""
@@ -1006,6 +1013,7 @@ class AdvancedLineupGenerator:
             for candidate in flex_candidates[:10]:  # Try top 10 candidates
                 test_lineup = copy.deepcopy(lineup)
                 test_lineup.players["FLEX"] = candidate
+                test_lineup._clear_cache()  # Clear cache after modifying players
                 
                 if test_lineup.is_valid() and test_lineup.get_quality_score(self.optimize_by) > best_score:
                     best_lineup = test_lineup
@@ -1020,7 +1028,149 @@ class AdvancedLineupGenerator:
             optimized_lineups.append(best_lineup)
         
         return optimized_lineups
-    
+
+    def _check_ownerships(self, lineups: List[LineUp], ownership_threshold: float) -> List[str]:
+        """
+        Check which players are over the ownership threshold
+        
+        Args:
+            lineups: List of lineups to check
+            ownership_threshold: Maximum percentage of lineups a player can be in
+            
+        Returns:
+            List of player names that are oversubscribed
+        """
+        # count the number of times each player is in the list of lineups
+        player_counts = {}
+        for lineup in lineups:
+            for player in lineup.players.values():
+                player_counts[player.name] = player_counts.get(player.name, 0) + 1
+
+        # find the players that are over the ownership threshold
+        lineup_threshold = int(ownership_threshold * len(lineups))
+        oversubscribed_players = []
+        for player, count in player_counts.items():
+            if count > lineup_threshold:
+                oversubscribed_players.append(player)
+        
+        return oversubscribed_players
+
+    def optimize_ownership(self, lineups: List[LineUp], ownership_threshold:float = 0.66) -> List[LineUp]:
+        """
+        Make sure there are no players that are over owned based on the ownership threshold.
+
+        Take the following steps:
+        1. Count the number of lineups that each player is in.
+        2. If a player is in more than the ownership threshold, add them to a list of 'oversubscribed' players.
+        3. Then loop back through the lineups, starting with the 'worst' lineup, and try to replace the oversubscribed player with the next best player that is not in the oversubscribed list. Be sure that the pool of replacement players makes the lineup still valid.
+        4. After adding a new player, check the ownership again to make sure there is not a new player now that is over the ownership threshold.
+        5. Repeat steps 3 and 4 until there are no oversubscribed players left.
+
+        Args:
+            lineups: List of lineups to optimize
+            ownership_threshold: The ownership threshold to use
+
+        Returns:
+            List of optimized lineups
+        
+        Example:
+        If there are 20 lineups and the ownership threshold is 0.6, and the lineup has 3 players that are over the ownership threshold, then the function will replace the 3 players with the next best players that are not over the ownership threshold.
+        If there are no players that are over the ownership threshold, then the function will return the original lineups.
+        If there are no replacement players that are not over the ownership threshold, then the function will return the original lineups.
+
+        """
+
+        
+        lineup_threshold = int(ownership_threshold * len(lineups))
+
+        # sort lineups by the total optimize_by score
+        if self.optimize_by == "boom_score":
+            lineups.sort(key=lambda x: x.boom_score, reverse=False)
+            score_name = "boom_score"
+        elif self.optimize_by == "risk_adjusted":
+            lineups.sort(key=lambda x: x.risk_adjusted_score, reverse=False)
+            score_name = "risk_adjusted_score"
+        else:  # projected
+            lineups.sort(key=lambda x: x.projected_score, reverse=False)
+            score_name = "projected_score"
+        
+         # print out count of each player in the lineups
+        player_counts = {}
+        for lineup in lineups:
+            for player in lineup.players.values():
+                player_counts[player.name] = player_counts.get(player.name, 0) + 1
+        for player, count in player_counts.items():
+            print(f"{player}: {count}")
+        
+        # replace the oversubscribed players with the next best players that are not over the ownership threshold
+        for lineup in lineups:
+            replacements = []  # Store replacements to apply after iteration
+            oversubscribed_players = self._check_ownerships(lineups, ownership_threshold)
+            for position, player in lineup.players.items():
+                if player.name in oversubscribed_players:
+                    # calculate the salary of the lineup without the oversubscribed player
+                    salary_without_player = lineup.salary - player.salary
+                    available_salary = 50000 - salary_without_player  # Remaining salary for replacement
+
+                    # create a pool of players that are within the available salary range and the same position
+                    pool = []
+                    if position == "FLEX":
+                        # For FLEX, include RB, WR, and TE
+                        for pos in ["RB", "WR", "TE"]:
+                            pool.extend([p for p in self.players.get(pos, []) if p.salary <= available_salary])
+                    elif position == "DST":
+                        pool.extend([p for p in self.players.get('D/ST', []) if p.salary <= available_salary])
+                    else:
+                        # need to remove the number from the position if its there, e.g. RB1 should just be RB
+                        position_clean = position.replace("1", "").replace("2", "").replace("3", "")
+                        pool = [p for p in self.players.get(position_clean, []) if p.salary <= available_salary]                    
+                    # remove oversubscribed players from the pool
+                    pool_before_filter = len(pool)
+                    pool = [p for p in pool if p.name not in oversubscribed_players]
+                    
+                    # Remove the current player from the pool if present
+                    pool = [p for p in pool if p.name != player.name]
+                    
+                    # sort the pool by the specified score type
+                    if self.optimize_by == "boom_score":
+                        pool.sort(key=lambda p: p.boom_score, reverse=True)
+                    elif self.optimize_by == "risk_adjusted":
+                        pool.sort(key=lambda p: p.risk_adjusted_score, reverse=True)
+                    else:  # projected
+                        pool.sort(key=lambda p: p.projected_score, reverse=True)
+                    
+                    # find the next best player that is not over the ownership threshold
+                    if len(pool) > 0:
+                        replacement_player = pool[0]
+                        replacements.append((position, replacement_player))
+                    else:
+                        print(f"No replacement player found for {player.name} - available salary: {available_salary}, position: {position}")
+            
+            # Apply all replacements after iteration is complete
+            for position, replacement_player in replacements:
+                print(f"Replacing {lineup.players[position].name} with {replacement_player.name}")
+                lineup.players[position] = replacement_player
+                
+        # print out count of each player in the lineups
+        player_counts = {}
+        for lineup in lineups:
+            for player in lineup.players.values():
+                player_counts[player.name] = player_counts.get(player.name, 0) + 1
+        for player, count in player_counts.items():
+            print(f"{player}: {count}")
+
+        # return the lineups sorted by the specified score type
+        if self.optimize_by == "boom_score":
+            lineups.sort(key=lambda x: x.boom_score, reverse=True)
+        elif self.optimize_by == "risk_adjusted":
+            lineups.sort(key=lambda x: x.risk_adjusted_score, reverse=True)
+        else:  # projected
+            lineups.sort(key=lambda x: x.projected_score, reverse=True)
+        
+        return lineups
+
+
+
     def _optimize_lineup_for_projected_score(self, lineup: LineUp) -> LineUp:
         """Optimize lineup by trying to maximize the specified score type within salary constraints"""
         best_lineup = lineup
@@ -1071,6 +1221,7 @@ class AdvancedLineupGenerator:
                 
                 test_lineup = copy.deepcopy(best_lineup)
                 test_lineup.players[pos] = candidate
+                test_lineup._clear_cache()  # Clear cache after modifying players
                 
                 if test_lineup.is_valid():
                     # Prefer higher score, but also consider salary utilization
@@ -1141,6 +1292,7 @@ class AdvancedLineupGenerator:
                 if salary_increase <= available_salary:
                     test_lineup = copy.deepcopy(best_lineup)
                     test_lineup.players[pos] = candidate
+                    test_lineup._clear_cache()  # Clear cache after modifying players
                     
                     if test_lineup.is_valid():
                         # Only upgrade if the specified score type doesn't decrease significantly
@@ -1319,6 +1471,9 @@ def main():
     # Optimize lineups
     print("Optimizing lineups...")
     optimized_lineups = generator.optimize_lineups(lineups)
+    # optimze ownership
+    print("Optimizing ownership...")
+    optimized_lineups = generator.optimize_ownership(optimized_lineups)
     
     # Print summary
     generator.print_lineup_summary(optimized_lineups)
