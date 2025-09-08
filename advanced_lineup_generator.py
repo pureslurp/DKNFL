@@ -673,7 +673,7 @@ class AdvancedLineupGenerator:
         """
         lineups = []
         attempts = 0
-        max_attempts = 20000  # Generate many attempts to find the best lineups
+        max_attempts = 200000  # Generate many attempts to find the best lineups
         
         # Pre-filter players by position - prioritize the specified score type, then salary (for better utilization)
         if self.optimize_by == "risk_adjusted":
