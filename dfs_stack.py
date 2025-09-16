@@ -941,55 +941,6 @@ def find_opponent(data: pd.Series) -> str:
         raise ValueError(f"Invalid game info format: {game_info}") from e
 
 
-def fix_name(data):
-    if data == "Travis Etienne":
-        return "Travis Etienne Jr."
-    elif data == "Michael Pittman":
-        return "Michael Pittman Jr."
-    elif data == "Kenneth Walker":
-        return "Kenneth Walker III"
-    elif data == "Jeff Wilson":
-        return "Jeff Wilson Jr."
-    elif data == "Brian Robinson":
-        return "Brian Robinson Jr."
-    elif data == "Odell Beckham":
-        return "Odell Beckham Jr."
-    elif data == "Gardner Minshew":
-        return "Gardner Minshew II"
-    elif data == "Melvin Gordon":
-        return "Melvin Gordon III"
-    elif data == "Tony Jones":
-        return "Tony Jones Jr."
-    elif data == "Pierre Strong":
-        return "Pierre Strong Jr."
-    elif data == "Larry Rountree":
-        return "Larry Rountree III"
-    elif data == "Amon-Ra St." or data == "Amon-Ra St.BrownA. S":
-        return "Amon-Ra St. Brown"
-    elif data == "D.K. Metcalf":
-        return "DK Metcalf"
-    elif data == "D.J. Moore":
-        return "DJ Moore"
-    elif data == "Nathaniel Dell":
-        return "Tank Dell"
-    elif data == "Josh Palmer":
-        return "Joshua Palmer"
-    elif data == "Cartavious Bigsby":
-        return "Tank Bigsby"
-    elif data == "Damario Douglas":
-        return "DeMario Douglas"
-    elif data == "Re'Mahn Davis":
-        return "Ray Davis"
-    elif data == "Gabriel Davis":
-        return "Gabe Davis"
-    elif data == "Chigoziem Okonkwo":
-        return "Chig Okonkwo"
-    elif data == "John Mundt":
-        return "Johnny Mundt"
-    elif data == "Mar'Keise Irving":
-        return "Bucky Irving"
-    else:
-        return data
     
 def fetch_nfl_stats() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Fetch NFL statistics from various sources"""
@@ -1158,7 +1109,9 @@ def process_player_data(dk_pool: pd.DataFrame, dk_stat: pd.DataFrame, week: int,
         defense_stats = None
 
     # Clean and combine data
-    dk_stat["Name"] = dk_stat["Name"].apply(fix_name)
+    from utils import clean_player_name
+    dk_pool["Name"] = dk_pool["Name"].apply(clean_player_name)
+    dk_stat["Name"] = dk_stat["Name"].apply(clean_player_name)
     dk_defense = defense(dk_pool, week)
     dk_stat = pd.concat([dk_stat, dk_defense], ignore_index=True)
     

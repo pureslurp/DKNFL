@@ -13,7 +13,7 @@ import pandas as pd
 from tqdm.auto import tqdm
 
 # Local imports
-from utils import BYE_DICT, CITY_TO_TEAM, TEAM_DICT, TOTAL_DICT
+from utils import BYE_DICT, CITY_TO_TEAM, TEAM_DICT, TOTAL_DICT, clean_player_name
 
 
 @dataclass
@@ -186,6 +186,11 @@ class Stack:
     def risk_adjusted_score(self) -> float:
         """Returns the risk-adjusted score of the stack"""
         return self.qb.risk_adjusted_score + self.wrte.risk_adjusted_score
+
+    @property
+    def boom_score(self) -> float:
+        """Returns the total boom score of the stack"""
+        return self.qb.boom_score + self.wrte.boom_score
 
     @property
     def is_optimal_range(self) -> bool:
@@ -519,13 +524,14 @@ class AdvancedLineupGenerator:
             'WR, CB': 'WR'
         })
         
-        # Clean names for D/ST positions - remove "D/ST" suffix
-        espn_clean['name_clean'] = espn_clean['player_name'].str.lower().str.strip()
-        espn_clean.loc[espn_clean['position'] == 'D/ST', 'name_clean'] = \
-            espn_clean.loc[espn_clean['position'] == 'D/ST', 'name_clean'].str.replace(' d/st', '', case=False)
+        # Clean names using comprehensive cleaning function
+        espn_clean['name_clean'] = espn_clean['player_name'].apply(clean_player_name)
+        # Special handling for D/ST positions - remove "D/ST" suffix after general cleaning
+        dst_mask = espn_clean['position'] == 'D/ST'
+        espn_clean.loc[dst_mask, 'name_clean'] = espn_clean.loc[dst_mask, 'name_clean'].str.replace(' d/st', '', case=False)
         
         dk_clean = self.dk_data.copy()
-        dk_clean['name_clean'] = dk_clean['Name'].str.lower().str.strip()
+        dk_clean['name_clean'] = dk_clean['Name'].apply(clean_player_name)
         dk_clean['position_clean'] = dk_clean['Position']
         
         # Merge the dataframes on cleaned names AND positions
@@ -635,7 +641,7 @@ class AdvancedLineupGenerator:
             return []
         
         # Sort by projected score for highest points stacks
-        stacks_by_points = sorted(stacks, key=lambda s: s.projected_score, reverse=True)
+        stacks_by_points = sorted(stacks, key=lambda s: s.boom_score if self.optimize_by == "boom_score" else s.projected_score, reverse=True)
         
         # Sort by value (points per dollar) for best value stacks
         stacks_by_value = sorted(stacks, key=lambda s: s.value, reverse=True)
@@ -673,7 +679,7 @@ class AdvancedLineupGenerator:
         """
         lineups = []
         attempts = 0
-        max_attempts = 200000  # Generate many attempts to find the best lineups
+        max_attempts = 500000  # Generate many attempts to find the best lineups
         
         # Pre-filter players by position - prioritize the specified score type, then salary (for better utilization)
         if self.optimize_by == "risk_adjusted":
@@ -745,10 +751,16 @@ class AdvancedLineupGenerator:
         if len(top_te_pool) < 3:
             top_te_pool = te_candidates
         
+        # Get opponent team from stack QB
+        stack_opponent = stack.qb.opponent
+        
+        # Filter out DSTs playing against stack QB's team
+        filtered_dst_candidates = [dst for dst in dst_candidates if dst.team != stack_opponent]
+        
         # Top 20 DSTs by projected score
-        top_dst_by_points = sorted(dst_candidates, key=lambda p: p.projected_score, reverse=True)[:20]
-        # Top 20 DSTs by value ratio
-        top_dst_by_value = sorted(dst_candidates, key=lambda p: p.projected_score / p.salary, reverse=True)[:20]
+        top_dst_by_points = sorted(filtered_dst_candidates, key=lambda p: p.projected_score, reverse=True)[:20]
+        # Top 20 DSTs by value ratio 
+        top_dst_by_value = sorted(filtered_dst_candidates, key=lambda p: p.projected_score / p.salary, reverse=True)[:20]
         # Combine and deduplicate by player name
         top_dst_pool = []
         seen_names = set()
@@ -756,9 +768,9 @@ class AdvancedLineupGenerator:
             if player.name not in seen_names:
                 top_dst_pool.append(player)
                 seen_names.add(player.name)
-        # Fallback to all candidates if pool is too small
+        # Fallback to all filtered candidates if pool is too small
         if len(top_dst_pool) < 3:
-            top_dst_pool = dst_candidates
+            top_dst_pool = filtered_dst_candidates
         
         # Use a more flexible approach: generate random numbers on-demand but with optimized random generation
         # This avoids the mismatch between pre-computed indices and actual iteration needs
@@ -813,14 +825,12 @@ class AdvancedLineupGenerator:
                 lineup = LineUp(stack.qb, rb1, rb2, wr1, wr2, wr3, te, flex, dst)
                 
                 # Fast validation checks first (most likely to fail)
-                total_salary = stack.qb.salary + rb1.salary + rb2.salary + wr1.salary + wr2.salary + wr3.salary + te.salary + flex.salary + dst.salary
-                
-                # Quick salary cap check
-                if total_salary > LineUp.SALARY_CAP:
+                # Use the lineup's actual salary calculation to ensure consistency
+                if lineup.salary > LineUp.SALARY_CAP:
                     continue
                 
                 # Quick minimum salary check
-                if total_salary < 48000:
+                if lineup.salary < 48000:
                     continue
                 
                 # Check for sub-$4000 player (excluding defense)
@@ -1115,21 +1125,28 @@ class AdvancedLineupGenerator:
                     # create a pool of players that are within the available salary range and the same position
                     pool = []
                     if position == "FLEX":
-                        # For FLEX, include RB, WR, and TE
+                        # For FLEX, include RB, WR, and TE that fit within salary constraints
                         for pos in ["RB", "WR", "TE"]:
-                            pool.extend([p for p in self.players.get(pos, []) if p.salary <= available_salary])
+                            pool.extend([p for p in self.players.get(pos, []) 
+                                       if p.salary <= available_salary 
+                                       and p.name not in oversubscribed_players 
+                                       and p.name != player.name])
                     elif position == "DST":
-                        pool.extend([p for p in self.players.get('D/ST', []) if p.salary <= available_salary])
+                        # Get QB's opponent team
+                        qb_opponent = lineup.players['QB'].opponent
+                        # Filter out DSTs playing against QB's team and ensure salary fits
+                        pool.extend([p for p in self.players.get('D/ST', []) 
+                                   if p.salary <= available_salary 
+                                   and p.team != qb_opponent 
+                                   and p.name not in oversubscribed_players 
+                                   and p.name != player.name])
                     else:
                         # need to remove the number from the position if its there, e.g. RB1 should just be RB
                         position_clean = position.replace("1", "").replace("2", "").replace("3", "")
-                        pool = [p for p in self.players.get(position_clean, []) if p.salary <= available_salary]                    
-                    # remove oversubscribed players from the pool
-                    pool_before_filter = len(pool)
-                    pool = [p for p in pool if p.name not in oversubscribed_players]
-                    
-                    # Remove the current player from the pool if present
-                    pool = [p for p in pool if p.name != player.name]
+                        pool = [p for p in self.players.get(position_clean, []) 
+                               if p.salary <= available_salary 
+                               and p.name not in oversubscribed_players 
+                               and p.name != player.name]
                     
                     # sort the pool by the specified score type
                     if self.optimize_by == "boom_score":
@@ -1471,6 +1488,7 @@ def main():
     # Optimize lineups
     print("Optimizing lineups...")
     optimized_lineups = generator.optimize_lineups(lineups)
+    
     # optimze ownership
     print("Optimizing ownership...")
     optimized_lineups = generator.optimize_ownership(optimized_lineups)

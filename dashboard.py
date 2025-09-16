@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 from st_aggrid import GridOptionsBuilder, AgGrid, GridUpdateMode, ColumnsAutoSizeMode
+from utils import clean_player_name
 
 def chart_data(data, name):
     #transform dataframe 
@@ -101,6 +102,9 @@ df_debug["Value"] = round((df_debug["Proj DFS Total"] / df_debug["Salary"]) * 10
 # figure out if the week is in the past or future
 try:
     df_box_score = pd.read_csv(f"2024/{week_str}/box_score_debug.csv")
+    # Clean names before merging
+    df_debug["Name"] = df_debug["Name"].apply(clean_player_name)
+    df_box_score["Name"] = df_box_score["Name"].apply(clean_player_name)
     df = pd.merge(df_debug, df_box_score, how="left", on="Name")
     df = df.rename(columns={"DFS Total": "Act DFS Total"})
     df["Net"] = df["Proj DFS Total"] - df["Act DFS Total"]
