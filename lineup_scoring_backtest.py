@@ -13,10 +13,11 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
 import re
-from scipy.stats import pearsonr, spearmanr
+from scipy.stats import pearsonr, spearmanr, beta
 from typing import Dict, List, Tuple, Optional
 from itertools import combinations
 import warnings
+from utils import clean_player_name
 warnings.filterwarnings('ignore')
 
 class LineupScoringBacktest:
@@ -24,30 +25,6 @@ class LineupScoringBacktest:
         self.base_dir = Path(base_dir)
         self.results = []
         
-    def clean_player_name(self, name: str) -> str:
-        """Clean player name for better matching between files"""
-        if pd.isna(name):
-            return ""
-        
-        # Remove ID numbers in parentheses
-        name = re.sub(r'\s*\([^)]*\)', '', str(name))
-        
-        # Handle abbreviated names like "A.J. BrownA.  Brow" -> "A.J. Brown"
-        # Look for pattern where name repeats with abbreviation
-        if 'A.  ' in name or 'J.  ' in name:
-            # Split and take the first part that looks like a proper name
-            parts = name.split('A.  ')
-            if len(parts) > 1:
-                name = parts[0].strip()
-            else:
-                parts = name.split('J.  ')
-                if len(parts) > 1:
-                    name = parts[0].strip()
-        
-        # Remove extra spaces and normalize
-        name = re.sub(r'\s+', ' ', name.strip())
-        
-        return name
     
     def load_week_data(self, week_folder: Path) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """Load generated lineups and actual scores for a week"""
@@ -65,7 +42,7 @@ class LineupScoringBacktest:
             raise FileNotFoundError(f"No box_score_debug.csv found in {week_folder}")
         
         actual_df = pd.read_csv(actual_file)
-        actual_df['Name_Clean'] = actual_df['Name'].apply(self.clean_player_name)
+        actual_df['Name_Clean'] = actual_df['Name'].apply(clean_player_name)
         
         return lineups_df, actual_df
     
@@ -76,7 +53,7 @@ class LineupScoringBacktest:
         
         for pos in positions:
             if pos in lineup_row:
-                player_name = self.clean_player_name(lineup_row[pos])
+                player_name = clean_player_name(lineup_row[pos])
                 if player_name:
                     players.append(player_name)
         
@@ -437,8 +414,8 @@ class LineupScoringBacktest:
             salary_df = pd.read_csv(salary_files[0])
             
             # Clean up the data and merge
-            actual_df['Name_Clean'] = actual_df['Name'].apply(self.clean_player_name)
-            salary_df['Name_Clean'] = salary_df['Name'].apply(self.clean_player_name)
+            actual_df['Name_Clean'] = actual_df['Name'].apply(clean_player_name)
+            salary_df['Name_Clean'] = salary_df['Name'].apply(clean_player_name)
             
             # Merge actual scores with salary data
             merged_df = salary_df.merge(actual_df[['Name_Clean', 'DFS Total']], 
@@ -707,6 +684,229 @@ class LineupScoringBacktest:
         except Exception as e:
             print(f"Error saving optimal lineup CSV: {e}")
 
+    def estimate_placement_from_score(self, actual_score: float, optimal_score: float, total_entries: int = 85350) -> int:
+        """
+        Estimate DraftKings placement based on actual score and optimal score.
+        
+        Uses real Week 2 data points for calibration:
+        - 249.3 points (89.1% optimal) = 1st place
+        - 211 points (75.4% optimal) = ~208th place
+        - 188 points (67.2% optimal) = ~2,783rd place
+        - Bottom payout (55% optimal) = ~85,350th place
+        """
+        if np.isnan(actual_score) or actual_score <= 0:
+            return total_entries  # Last place if no valid score
+        
+        # Calculate percentage of optimal score
+        score_pct = actual_score / optimal_score
+        
+        # Define key data points from real DraftKings results
+        # (score_percentage, placement)
+        calibration_points = [
+            (0.891, 1),        # 1st place: 249.3 / 279.66 = 89.1%
+            (0.754, 208),      # Your 211-point lineup
+            (0.672, 2783),     # Your 188-point lineup
+            (0.550, 85350)     # Bottom payout threshold (55% optimal)
+        ]
+        
+        # If score is better than 1st place calibration point, extrapolate
+        if score_pct >= calibration_points[0][0]:
+            # Linear extrapolation for scores above 1st place
+            # Assume top 1% of scores are very tightly packed
+            excess_pct = (score_pct - calibration_points[0][0]) / (1.0 - calibration_points[0][0])
+            return max(1, int(1 + excess_pct * 0))  # Stay at 1st place for scores >= 89.1%
+        
+        # If score is worse than bottom payout, place at bottom
+        if score_pct <= calibration_points[-1][0]:
+            return total_entries
+        
+        # Interpolate between calibration points
+        for i in range(len(calibration_points) - 1):
+            upper_score, upper_place = calibration_points[i]
+            lower_score, lower_place = calibration_points[i + 1]
+            
+            if lower_score <= score_pct <= upper_score:
+                # Use exponential interpolation to handle the non-linear spacing
+                # Convert to log space for more realistic distribution
+                if upper_place == lower_place:
+                    return upper_place
+                
+                # Calculate position within this range
+                range_pct = (score_pct - lower_score) / (upper_score - lower_score)
+                
+                # Use exponential interpolation for more realistic placement distribution
+                # Higher scores have exponentially better placements
+                log_upper = np.log(upper_place + 1)
+                log_lower = np.log(lower_place + 1)
+                log_interpolated = log_lower + range_pct * (log_upper - log_lower)
+                estimated_place = int(np.exp(log_interpolated) - 1)
+                
+                return max(1, min(estimated_place, total_entries))
+        
+        # Fallback (shouldn't reach here with proper calibration points)
+        return total_entries
+
+    def get_optimal_score_for_week(self, week_folder: Path) -> float:
+        """Get the optimal score from the optimal lineup CSV file"""
+        try:
+            optimal_file = week_folder / f"optimal_lineup_{week_folder.name.lower()}.csv"
+            if optimal_file.exists():
+                optimal_df = pd.read_csv(optimal_file)
+                # Look for the total row
+                total_row = optimal_df[optimal_df['Position'] == 'TOTAL']
+                if not total_row.empty:
+                    return float(total_row.iloc[0]['Actual_Points'])
+            
+            # Fallback: calculate optimal lineup if file doesn't exist
+            optimal_result = self.find_optimal_lineup(week_folder)
+            if 'error' not in optimal_result:
+                return optimal_result['optimal_score']
+                
+        except Exception as e:
+            print(f"Error getting optimal score for {week_folder}: {e}")
+        
+        # Final fallback: return a reasonable estimate
+        return 300.0  # Typical high DFS score
+
+    def create_actual_scoring_csv(self, week_folder: Path) -> str:
+        """Create a CSV file with actual scoring for generated lineups"""
+        try:
+            lineups_df, actual_df = self.load_week_data(week_folder)
+            
+            # Get optimal score for payout calculations
+            optimal_score = self.get_optimal_score_for_week(week_folder)
+            print(f"Using optimal score of {optimal_score:.2f} for payout calculations")
+            
+            # Prepare data for the output CSV
+            scoring_data = []
+            
+            for idx, lineup in lineups_df.iterrows():
+                # Extract player names from lineup
+                players = self.extract_player_names_from_lineup(lineup)
+                
+                # Calculate actual score for this lineup
+                actual_score = self.calculate_actual_lineup_score(players, actual_df)
+                
+                # Calculate projected placement and payout
+                if not np.isnan(actual_score) and actual_score > 0:
+                    estimated_place = self.estimate_placement_from_score(actual_score, optimal_score)
+                    projected_payout = draftkings_payout(estimated_place)
+                else:
+                    estimated_place = 85350  # Last place
+                    projected_payout = 0
+                
+                # Create row with lineup info and actual score
+                row_data = {
+                    'Lineup_ID': idx + 1,
+                    'QB': lineup.get('QB', ''),
+                    'RB1': lineup.get('RB1', ''),
+                    'RB2': lineup.get('RB2', ''),
+                    'WR1': lineup.get('WR1', ''),
+                    'WR2': lineup.get('WR2', ''),
+                    'WR3': lineup.get('WR3', ''),
+                    'TE': lineup.get('TE', ''),
+                    'FLEX': lineup.get('FLEX', ''),
+                    'DST': lineup.get('DST', ''),
+                    'Salary': lineup.get('Salary', 0),
+                    'Projected_Score': lineup.get('Projected_Score', 0),
+                    'Risk_Adjusted_Score': lineup.get('Risk_Adjusted_Score', 0),
+                    'Boom_Score': lineup.get('Boom_Score', 0),
+                    'Actual_Score': actual_score if not np.isnan(actual_score) else 0,
+                    'Score_Difference': (actual_score - lineup.get('Projected_Score', 0)) if not np.isnan(actual_score) else np.nan,
+                    'Actual_vs_Projected_Pct': ((actual_score / lineup.get('Projected_Score', 1)) * 100) if not np.isnan(actual_score) and lineup.get('Projected_Score', 0) > 0 else np.nan,
+                    'Estimated_Placement': estimated_place,
+                    'Projected_Payout': projected_payout,
+                    'Score_vs_Optimal_Pct': ((actual_score / optimal_score) * 100) if not np.isnan(actual_score) and optimal_score > 0 else 0
+                }
+                
+                # Add individual player actual scores if we can match them
+                player_scores = {}
+                positions = ['QB', 'RB1', 'RB2', 'WR1', 'WR2', 'WR3', 'TE', 'FLEX', 'DST']
+                
+                for pos in positions:
+                    if pos in lineup and lineup[pos]:
+                        player_name = clean_player_name(lineup[pos])
+                        if player_name:
+                            # Try to find this player's actual score
+                            matches = actual_df[actual_df['Name_Clean'] == player_name]
+                            if matches.empty:
+                                matches = actual_df[actual_df['Name_Clean'].str.contains(player_name, case=False, na=False)]
+                            
+                            if not matches.empty:
+                                player_score = matches.iloc[0]['DFS Total']
+                                if pd.notna(player_score):
+                                    player_scores[f'{pos}_Actual_Score'] = float(player_score)
+                                else:
+                                    player_scores[f'{pos}_Actual_Score'] = 0
+                            else:
+                                player_scores[f'{pos}_Actual_Score'] = 0
+                        else:
+                            player_scores[f'{pos}_Actual_Score'] = 0
+                
+                # Add player scores to row data
+                row_data.update(player_scores)
+                
+                scoring_data.append(row_data)
+            
+            # Create DataFrame
+            scoring_df = pd.DataFrame(scoring_data)
+            
+            # Sort by actual score descending to show best lineups first
+            scoring_df = scoring_df.sort_values('Actual_Score', ascending=False).reset_index(drop=True)
+            
+            # Save to CSV
+            output_file = week_folder / f"generated_lineups_actual_scoring_{week_folder.name.lower()}.csv"
+            scoring_df.to_csv(output_file, index=False)
+            
+            # Print summary statistics
+            total_payout = scoring_df['Projected_Payout'].sum()
+            avg_payout = scoring_df['Projected_Payout'].mean()
+            paying_lineups = len(scoring_df[scoring_df['Projected_Payout'] > 0])
+            
+            print(f"Generated lineups with actual scoring saved to: {output_file}")
+            print(f"Payout Summary: {paying_lineups}/{len(scoring_df)} lineups projected to pay (${total_payout:,} total, ${avg_payout:.2f} avg)")
+            return str(output_file)
+            
+        except Exception as e:
+            error_msg = f"Error creating actual scoring CSV for {week_folder}: {e}"
+            print(error_msg)
+            return error_msg
+
+    def get_payout_stats_for_week(self, week_folder: Path) -> Dict:
+        """Get payout statistics from the generated lineups actual scoring CSV"""
+        try:
+            csv_file = week_folder / f"generated_lineups_actual_scoring_{week_folder.name.lower()}.csv"
+            if not csv_file.exists():
+                return None
+                
+            df = pd.read_csv(csv_file)
+            
+            if 'Projected_Payout' not in df.columns:
+                return None
+            
+            total_payout = df['Projected_Payout'].sum()
+            avg_payout = df['Projected_Payout'].mean()
+            paying_lineups = len(df[df['Projected_Payout'] > 0])
+            total_lineups = len(df)
+            
+            # Get best performing lineup
+            best_lineup = df.loc[df['Projected_Payout'].idxmax()]
+            best_payout = best_lineup['Projected_Payout']
+            best_placement = best_lineup['Estimated_Placement']
+            
+            return {
+                'total_payout': int(total_payout),
+                'avg_payout': avg_payout,
+                'paying_lineups': paying_lineups,
+                'total_lineups': total_lineups,
+                'best_payout': int(best_payout),
+                'best_placement': int(best_placement)
+            }
+            
+        except Exception as e:
+            print(f"Error getting payout stats for {week_folder}: {e}")
+            return None
+
     def compare_generated_vs_optimal(self, week_folder: Path) -> Dict:
         """Compare generated lineups against the optimal lineup"""
         try:
@@ -751,6 +951,18 @@ class LineupScoringBacktest:
                 'error': f'Comparison failed: {str(e)}'
             }
 
+def generate_actual_scoring_csv_for_week(week_name: str, base_dir: str = "/Users/seanraymor/Documents/PythonScripts/DKNFL/2025") -> str:
+    """Standalone function to generate actual scoring CSV for a specific week"""
+    backtest = LineupScoringBacktest(base_dir)
+    week_folder = Path(base_dir) / week_name
+    
+    if not week_folder.exists():
+        error_msg = f"Week folder {week_folder} does not exist"
+        print(error_msg)
+        return error_msg
+    
+    return backtest.create_actual_scoring_csv(week_folder)
+
 def main():
     """Main execution function"""
     
@@ -771,13 +983,26 @@ def main():
     results_df.to_csv(output_file, index=False)
     print(f"\nDetailed results saved to: {output_file}")
     
-    # Find optimal lineups and compare
+    # Generate actual scoring CSVs for all weeks
     print("\n" + "="*60)
-    print("OPTIMAL LINEUP ANALYSIS")
+    print("GENERATING ACTUAL SCORING CSVs")
     print("="*60)
     
     week_folders = [d for d in backtest.base_dir.iterdir() if d.is_dir() and d.name.startswith('WEEK')]
     week_folders.sort()
+    
+    for week_folder in week_folders:
+        print(f"\nGenerating actual scoring CSV for {week_folder.name}...")
+        try:
+            csv_file = backtest.create_actual_scoring_csv(week_folder)
+            print(f"Success: {csv_file}")
+        except Exception as e:
+            print(f"Error: {e}")
+    
+    # Find optimal lineups and compare
+    print("\n" + "="*60)
+    print("OPTIMAL LINEUP ANALYSIS")
+    print("="*60)
     
     comparison_results = []
     for week_folder in week_folders:
@@ -790,6 +1015,15 @@ def main():
             print(f"Best Generated: {comparison['best_generated_score']:.2f} ({comparison['best_vs_optimal_pct']:.1f}% of optimal)")
             print(f"Avg Generated: {comparison['avg_generated_score']:.2f} ({comparison['avg_vs_optimal_pct']:.1f}% of optimal)")
             print(f"Score Gap: {comparison['score_gap']:.2f} points from optimal")
+            
+            # Get payout stats for this week
+            try:
+                payout_stats = backtest.get_payout_stats_for_week(week_folder)
+                if payout_stats:
+                    print(f"Projected Payout: ${payout_stats['total_payout']:,} total, ${payout_stats['avg_payout']:.2f} avg ({payout_stats['paying_lineups']}/{payout_stats['total_lineups']} lineups pay)")
+                    print(f"Best Payout: ${payout_stats['best_payout']:,} (place {payout_stats['best_placement']:,})")
+            except Exception as e:
+                print(f"Payout calculation error: {e}")
             
             # Display optimal lineup
             optimal_lineup = comparison['optimal_lineup']
@@ -814,6 +1048,42 @@ def main():
         comparison_output = backtest.base_dir.parent / 'optimal_lineup_comparison.csv'
         comparison_df.to_csv(comparison_output, index=False)
         print(f"\nOptimal lineup comparison saved to: {comparison_output}")
+
+def draftkings_payout(place: int) -> int:
+    """
+    Returns the DraftKings payout based on finishing place.
+    Payout structure comes from the provided contest screenshots.
+    """
+    payout_structure = [
+        (1, 1, 80000),
+        (2, 2, 40000),
+        (3, 3, 20000),
+        (4, 5, 10000),
+        (6, 10, 5000),
+        (11, 20, 2000),
+        (21, 50, 1000),
+        (51, 100, 400),
+        (101, 150, 200),
+        (151, 225, 150),
+        (226, 350, 100),
+        (351, 550, 75),
+        (551, 850, 50),
+        (851, 1500, 30),
+        (1501, 2750, 20),
+        (2751, 4750, 15),
+        (4751, 7750, 12),
+        (7751, 12500, 10),
+        (12501, 21000, 8),
+        (21001, 39000, 6),
+        (39001, 85350, 5),
+    ]
+
+    for low, high, prize in payout_structure:
+        if low <= place <= high:
+            return prize
+
+    return 0  # no payout if outside paid places
+
 
 if __name__ == "__main__":
     main()

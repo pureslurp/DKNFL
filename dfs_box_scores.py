@@ -9,7 +9,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from bs4 import BeautifulSoup
-from dfs_stack import fix_name
+from utils import clean_player_name
 import time
 from selenium.common.exceptions import (
     TimeoutException,
@@ -61,31 +61,6 @@ class DKScoring:
     
     receiving_td = rushing_td  # Same scoring for receiving TDs
 
-class PlayerNameCleaner:
-    """Clean and standardize player names"""
-    
-    @staticmethod
-    def clean_name(name: str) -> str:
-        """Clean player name from raw format"""
-        if "." not in name:
-            return name
-            
-        parts = name.split(".")
-        
-        # Handle special cases
-        if parts[0] == "Amon-Ra":
-            return "Amon-Ra St. Brown"
-        elif parts[0] == "Equanimeous":
-            return "Equanimeous St. Brown"
-            
-        # Handle standard cases
-        if len(parts) > 2:
-            # Join initials and last name
-            initials = parts[:-1]
-            last_name = parts[-1][:-1]  # Remove trailing character
-            return f'{".".join(initials)}. {last_name}'.strip()
-        else:
-            return parts[0][:-1]  # Remove trailing character
 
 class FootballDBScraper:
     """Scraper for FootballDB box scores"""
@@ -266,7 +241,7 @@ class FootballDBScraper:
                     if player_name:
                         # Remove any HTML tags that might be in the text
                         player_name = player_name.replace('\xa0', ' ')  # Replace non-breaking spaces
-                        player_name = PlayerNameCleaner.clean_name(player_name)
+                        player_name = clean_player_name(player_name)
                     
                     if not player_name or player_name == 'TOTAL':
                         continue
@@ -571,7 +546,7 @@ class FootballDBScraper:
         
         # Clean up final DataFrame
         df.rename(columns={"player": "Name"}, inplace=True)
-        df["Name"] = df["Name"].apply(fix_name)
+        df["Name"] = df["Name"].apply(clean_player_name)
         
         print("\nFinal columns:", df.columns.tolist())
         return df
