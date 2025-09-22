@@ -14,6 +14,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 import logging
 import warnings
 from typing import Dict, List, Optional, Tuple
+from utils import clean_player_name
 
 # Suppress urllib3 connection warnings that flood console on Ctrl+C
 warnings.filterwarnings("ignore", message=".*Connection refused.*")
@@ -51,6 +52,7 @@ class ESPNFantasyScraper:
         self.driver = None
         self.wait = None
         self.base_url = "https://fantasy.espn.com/football/players/add?leagueId=819459"
+        self.dk_salaries_players = set()  # Cache of DraftKings player names
         
     def setup_driver(self):
         """Set up Chrome WebDriver with appropriate options"""
@@ -163,7 +165,7 @@ class ESPNFantasyScraper:
                 projected_points = ""
             
             return {
-                'player_name': player_name,
+                'player_name': clean_player_name(player_name),
                 'team': team,
                 'position': position,
                 'opponent': opponent,
@@ -268,7 +270,7 @@ class ESPNFantasyScraper:
             
             if popup_data and player_name:  # Ensure we have at least a player name
                 return {
-                    'player_name': player_name,
+                    'player_name': clean_player_name(player_name),
                     'team': team,
                     'position': position,
                     'opponent': opponent,
@@ -352,47 +354,6 @@ class ESPNFantasyScraper:
         except Exception as e:
             logger.warning(f"Error ensuring popup closed: {e}")
     
-    def debug_pagination_elements(self):
-        """Debug function to see what pagination elements are present on the page"""
-        try:
-            logger.info("=== DEBUGGING PAGINATION ELEMENTS ===")
-            
-            # Look for all elements that might be pagination related
-            pagination_selectors = [
-                "[class*='pagination']",
-                "[class*='Pagination']", 
-                "button[class*='next']",
-                "a[class*='next']",
-                "button[aria-label*='next']",
-                "button[aria-label*='Next']",
-                "[class*='page']",
-                "[class*='Page']"
-            ]
-            
-            for selector in pagination_selectors:
-                try:
-                    elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                    if elements:
-                        logger.info(f"Found {len(elements)} elements with selector: {selector}")
-                        for i, elem in enumerate(elements):
-                            try:
-                                text = elem.text.strip()
-                                class_name = elem.get_attribute("class")
-                                aria_label = elem.get_attribute("aria-label")
-                                is_enabled = elem.is_enabled()
-                                is_displayed = elem.is_displayed()
-                                
-                                logger.info(f"  Element {i}: text='{text}', class='{class_name}', "
-                                          f"aria-label='{aria_label}', enabled={is_enabled}, displayed={is_displayed}")
-                            except Exception as e:
-                                logger.info(f"  Element {i}: Could not get details - {e}")
-                except Exception as e:
-                    logger.debug(f"Selector {selector} failed: {e}")
-            
-            logger.info("=== END PAGINATION DEBUG ===")
-            
-        except Exception as e:
-            logger.error(f"Debug pagination failed: {e}")
 
     def navigate_to_next_page(self) -> bool:
         """
@@ -406,22 +367,14 @@ class ESPNFantasyScraper:
             self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
             time.sleep(2)
             
-            # Debug: Look for all possible pagination elements
-            logger.info("Looking for pagination elements...")
-            self.debug_pagination_elements()
-            
             # Try multiple selectors for the next button
             next_button_selectors = [
                 "button.Pagination__Button--next:not([disabled])",
                 "button[class*='Pagination__Button--next']:not([disabled])",
                 "button[aria-label*='next']:not([disabled])",
                 "button[aria-label*='Next']:not([disabled])",
-                "a[class*='next']:not([disabled])",
-                "button:contains('Next'):not([disabled])",
                 ".Pagination__Button--next:not([disabled])",
-                "[class*='pagination'] button:not([disabled])",
-                "button[class*='Pagination__Button--next']",  # Without disabled check
-                ".Pagination__Button--next"  # Without disabled check
+                "[class*='pagination'] button:not([disabled])"
             ]
             
             next_button = None
@@ -430,20 +383,15 @@ class ESPNFantasyScraper:
                     elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
                     for elem in elements:
                         if elem.is_displayed() and elem.is_enabled():
-                            # Check if it's actually a next button by text, aria-label, or class name
-                            text = elem.text.lower()
+                            # Check if it's actually a next button
+                            text = elem.text.lower().strip()
                             aria_label = elem.get_attribute("aria-label") or ""
-                            aria_label = aria_label.lower()
                             class_name = elem.get_attribute("class") or ""
-                            class_name = class_name.lower()
                             
-                            # Check for next indicators in text, aria-label, or class name
-                            if ("next" in text or "next" in aria_label or "next" in class_name or
-                                ">" in text or "arrow" in aria_label or
-                                "pagination__button--next" in class_name):
+                            if ("next" in text or "next" in aria_label.lower() or 
+                                "next" in class_name.lower() or ">" in text):
                                 next_button = elem
-                                logger.info(f"Found next button with selector: {selector}")
-                                logger.info(f"Button details: text='{text}', aria-label='{aria_label}', class='{class_name}'")
+                                logger.info(f"Found next button: {text}")
                                 break
                     if next_button:
                         break
@@ -451,50 +399,23 @@ class ESPNFantasyScraper:
                     logger.debug(f"Selector {selector} failed: {e}")
                     continue
             
-            # If no specific next button found, look for any pagination buttons
+            # Fallback: look for pagination buttons with ">" or numeric page buttons
             if not next_button:
-                logger.info("No specific next button found, looking for pagination buttons...")
                 pagination_buttons = self.driver.find_elements(By.CSS_SELECTOR, 
                     "[class*='pagination'] button, [class*='Pagination'] button")
                 
                 for button in pagination_buttons:
                     if button.is_displayed() and button.is_enabled():
                         text = button.text.strip()
-                        aria_label = button.get_attribute("aria-label") or ""
-                        class_name = button.get_attribute("class") or ""
-                        
-                        # Look for next indicators in text, aria-label, or class name
-                        if (text in [">", "Next", "next", "→"] or 
-                            "next" in aria_label.lower() or
-                            "next" in class_name.lower() or
-                            "pagination__button--next" in class_name.lower() or
-                            ">" in text):
+                        if text in [">", "Next", "→"] or "next" in button.get_attribute("class").lower():
                             next_button = button
-                            logger.info(f"Found pagination button: text='{text}', aria-label='{aria_label}', class='{class_name}'")
+                            logger.info(f"Found pagination button: {text}")
                             break
-            
-            # If still no button found, try a direct approach based on what we saw in debug
-            if not next_button:
-                logger.info("Trying direct approach to find next button...")
-                try:
-                    # Look for the specific button we saw in debug output
-                    direct_buttons = self.driver.find_elements(By.CSS_SELECTOR, 
-                        "button[class*='Pagination__Button--next']")
-                    
-                    for button in direct_buttons:
-                        if button.is_displayed() and button.is_enabled():
-                            next_button = button
-                            logger.info("Found next button using direct approach")
-                            break
-                except Exception as e:
-                    logger.debug(f"Direct approach failed: {e}")
             
             if next_button and next_button.is_enabled():
-                logger.info("Found next page button, clicking...")
-                logger.info(f"Button class: {next_button.get_attribute('class')}")
                 # Use JavaScript click to avoid any click interception issues
                 self.driver.execute_script("arguments[0].click();", next_button)
-                time.sleep(3)  # Wait longer for page to load
+                time.sleep(3)  # Wait for page to load
                 
                 # Wait for new page content to load
                 try:
@@ -507,12 +428,9 @@ class ESPNFantasyScraper:
                     logger.warning("Page navigation may have failed - no table rows found")
                     return False
             else:
-                logger.info("Next page button is disabled, not found, or no more pages available")
+                logger.info("No more pages available")
                 return False
                 
-        except NoSuchElementException:
-            logger.info("No next page button found")
-            return False
         except Exception as e:
             logger.warning(f"Error navigating to next page: {e}")
             return False
@@ -1028,6 +946,9 @@ class ESPNFantasyScraper:
         existing_df = self.load_existing_data(output_file)
         players_data = []
         page_num = 1
+        seen_players = set()  # Track unique players to detect when we're getting duplicates
+        consecutive_no_new_players = 0  # Track consecutive pages with no new players
+        max_consecutive_no_new = 8  # Maximum consecutive pages with no new players before stopping
         
         try:
             while True:
@@ -1044,12 +965,36 @@ class ESPNFantasyScraper:
                     logger.warning(f"No player rows found on page {page_num}")
                     break
                 
+                # Track players before processing this page
+                players_before = len(seen_players)
+                
                 # Process all players on current page
-                self._process_players_on_page(player_rows, existing_df, players_data, output_file, coarse_mode)
+                page_new_players = self._process_players_on_page(player_rows, existing_df, players_data, output_file, coarse_mode, seen_players)
+                
+                # Check if we got any new players
+                players_after = len(seen_players)
+                new_players_this_page = players_after - players_before
+                
+                logger.info(f"Page {page_num}: {new_players_this_page} new players found (total unique: {players_after})")
+                
+                if new_players_this_page == 0:
+                    consecutive_no_new_players += 1
+                    logger.warning(f"No new players found on page {page_num} ({consecutive_no_new_players}/{max_consecutive_no_new})")
+                    
+                    if consecutive_no_new_players >= max_consecutive_no_new:
+                        logger.info(f"Stopping: {consecutive_no_new_players} consecutive pages with no new players")
+                        break
+                else:
+                    consecutive_no_new_players = 0  # Reset counter
                 
                 # Check if we should continue to next page
                 if max_pages and page_num >= max_pages:
                     logger.info(f"Reached maximum pages limit ({max_pages})")
+                    break
+                
+                # Safety check: don't go beyond reasonable page count
+                if page_num >= 50:  # ESPN shouldn't have more than 50 pages
+                    logger.warning(f"Reached safety limit of 50 pages - stopping")
                     break
                 
                 # Try to navigate to next page
@@ -1068,8 +1013,16 @@ class ESPNFantasyScraper:
             logger.error(f"Failed to scrape players: {e}")
             raise
     
-    def _process_players_on_page(self, player_rows, existing_df, players_data, output_file, coarse_mode=False):
+    def _process_players_on_page(self, player_rows, existing_df, players_data, output_file, coarse_mode=False, seen_players=None):
         """Process all players on a single page"""
+        if seen_players is None:
+            seen_players = set()
+            
+        dk_filtered_count = 0
+        already_scraped_count = 0
+        processed_count = 0
+        new_players_count = 0
+        
         for i, row in enumerate(player_rows):
             try:
                 # Skip header rows or rows without player data
@@ -1084,9 +1037,25 @@ class ESPNFantasyScraper:
                 # Check if player already scraped
                 if self.is_player_already_scraped(player_name, existing_df):
                     logger.info(f"Skipping {player_name} - already scraped")
+                    already_scraped_count += 1
                     continue
                 
-                logger.info(f"Processing player {i+1}/{len(player_rows)}: {player_name}")
+                # Check if player is in DraftKings salaries before processing
+                if not self.is_player_in_dk_salaries(player_name):
+                    logger.info(f"Skipping {player_name} - not in DKSalaries for this week")
+                    dk_filtered_count += 1
+                    continue
+                
+                # Track if this is a new player we haven't seen before
+                is_new_player = player_name not in seen_players
+                if is_new_player:
+                    seen_players.add(player_name)
+                    new_players_count += 1
+                    logger.info(f"Processing NEW player {i+1}/{len(player_rows)}: {player_name}")
+                else:
+                    logger.info(f"Processing DUPLICATE player {i+1}/{len(player_rows)}: {player_name}")
+                
+                processed_count += 1
                 
                 # Extract player data based on mode
                 if coarse_mode:
@@ -1116,6 +1085,12 @@ class ESPNFantasyScraper:
             except Exception as e:
                 logger.warning(f"Failed to process player row {i}: {e}")
                 continue
+        
+        # Log summary of page processing
+        logger.info(f"Page summary - Processed: {processed_count}, New players: {new_players_count}, "
+                   f"Already scraped: {already_scraped_count}, DK filtered: {dk_filtered_count}, Total rows: {len(player_rows)}")
+        
+        return new_players_count
     
     def _extract_player_name(self, row, row_index):
         """Extract player name from row with multiple selector fallbacks"""
@@ -1227,7 +1202,106 @@ class ESPNFantasyScraper:
             return False
         return player_name in existing_df['player_name'].values
     
-    def run_scraper(self, output_file: str = "espn_fantasy_projections.csv", max_pages: int = None, coarse_mode: bool = False):
+    def load_dk_salaries(self, week: int) -> None:
+        """
+        Load DraftKings salaries for the specified week to filter relevant players
+        
+        Args:
+            week: Week number (e.g., 1, 2, 3)
+        """
+        try:
+            # Try different possible file patterns for the week
+            possible_paths = [
+                f"2025/WEEK{week}/DKSalaries - *.csv",  # Current 2025 format
+                f"2025/WEEK{week}/DKSalaries-Week{week}.csv",  # Alternative format
+                f"2024/WEEK{week}/DKSalaries-Week{week}.csv",  # 2024 format fallback
+            ]
+            
+            dk_file_path = None
+            
+            # Find the DKSalaries file for this week
+            for pattern in possible_paths:
+                import glob
+                matching_files = glob.glob(pattern)
+                if matching_files:
+                    dk_file_path = matching_files[0]  # Take the first match
+                    break
+            
+            if not dk_file_path:
+                logger.warning(f"No DKSalaries file found for week {week}. Will scrape all players.")
+                return
+            
+            # Load the DKSalaries CSV
+            dk_df = pd.read_csv(dk_file_path)
+            
+            # Extract player names from the 'Name' column (3rd column) and clean them
+            if 'Name' in dk_df.columns:
+                # Apply name cleaning to all DKSalaries player names
+                cleaned_names = dk_df['Name'].apply(lambda x: clean_player_name(str(x).strip()) if pd.notna(x) else "")
+                self.dk_salaries_players = set(cleaned_names.tolist())
+                
+                # Remove any empty names
+                self.dk_salaries_players.discard("")
+                
+                logger.info(f"Loaded {len(self.dk_salaries_players)} players from DKSalaries: {dk_file_path}")
+                
+                # Log a few sample names for verification
+                sample_names = list(self.dk_salaries_players)[:5]
+                logger.info(f"Sample DK player names (cleaned): {sample_names}")
+            else:
+                logger.warning(f"'Name' column not found in {dk_file_path}. Available columns: {dk_df.columns.tolist()}")
+                
+        except Exception as e:
+            logger.warning(f"Failed to load DKSalaries for week {week}: {e}")
+            logger.warning("Will scrape all players without filtering.")
+    
+    def is_player_in_dk_salaries(self, player_name: str) -> bool:
+        """
+        Check if a player exists in the DraftKings salaries
+        
+        Args:
+            player_name: Name of the player to check
+            
+        Returns:
+            True if player is in DK salaries, False otherwise
+        """
+        if not self.dk_salaries_players:
+            # If no DK data loaded, assume all players are relevant
+            return True
+        
+        # Clean the ESPN player name first
+        cleaned_player_name = clean_player_name(player_name)
+        
+        # Direct match first (cleaned names)
+        if cleaned_player_name in self.dk_salaries_players:
+            return True
+        
+        # Try fuzzy matching for additional variations
+        player_name_lower = cleaned_player_name.lower().strip()
+        
+        for dk_name in self.dk_salaries_players:
+            dk_name_lower = dk_name.lower().strip()
+            
+            # Exact match (case insensitive)
+            if player_name_lower == dk_name_lower:
+                return True
+            
+            # Handle additional common variations like Jr., Sr., II, III
+            # Remove suffixes for comparison
+            suffixes = [' jr.', ' sr.', ' ii', ' iii', ' iv', ' jr', ' sr']
+            player_clean = player_name_lower
+            dk_clean = dk_name_lower
+            
+            for suffix in suffixes:
+                player_clean = player_clean.replace(suffix, '')
+                dk_clean = dk_clean.replace(suffix, '')
+            
+            if player_clean == dk_clean:
+                return True
+        
+        return False
+    
+    def run_scraper(self, output_file: str = "espn_fantasy_projections.csv", max_pages: int = None, coarse_mode: bool = False, week: int = None):
         """
         Main method to run the complete scraping process
         
@@ -1235,9 +1309,15 @@ class ESPNFantasyScraper:
             output_file: Name of the output CSV file
             max_pages: Maximum number of pages to scrape (None for all pages)
             coarse_mode: If True, use simplified extraction (no clicking). If False, use detailed extraction with popups.
+            week: Week number to load DKSalaries for filtering (optional)
         """
         try:
             logger.info("Starting ESPN fantasy projections scraper")
+            
+            # Load DraftKings salaries for filtering if week is provided
+            if week:
+                logger.info(f"Loading DKSalaries for week {week} to filter relevant players")
+                self.load_dk_salaries(week)
             
             # Setup and navigate directly
             self.setup_driver()
@@ -1269,8 +1349,8 @@ def main():
     parser.add_argument("--week", type=int, required=True, help="Week number (e.g., 1, 2, 3)")
     parser.add_argument("--output", "-o", default="espn_fantasy_projections.csv",
                        help="Output CSV filename")
-    parser.add_argument("--max-pages", "-m", type=int, default=None,
-                       help="Maximum number of pages to scrape (default: all pages)")
+    parser.add_argument("--max-pages", "-m", type=int, default=10,
+                       help="Maximum number of pages to scrape (default: 10)")
     parser.add_argument("--mode", choices=["fine", "coarse"], default="fine",
                        help="Analysis mode: 'fine' for detailed extraction with popups (default), 'coarse' for simplified extraction from table rows only")
     
@@ -1290,10 +1370,7 @@ def main():
     print(f"Analysis mode: {args.mode.upper()}")
     print(f"Output folder: {week_folder}")
     print(f"Output file: {output_file}")
-    if args.max_pages:
-        print(f"Maximum pages to scrape: {args.max_pages}")
-    else:
-        print("Will scrape all available pages")
+    print(f"Maximum pages to scrape: {args.max_pages}")
     
     if coarse_mode:
         print("Using simplified extraction (projection points only, no boom/bust data)")
@@ -1301,7 +1378,7 @@ def main():
         print("Using detailed extraction (includes boom/bust data from popups)")
     
     scraper = ESPNFantasyScraper()
-    df = scraper.run_scraper(output_file, args.max_pages, coarse_mode)
+    df = scraper.run_scraper(output_file, args.max_pages, coarse_mode, args.week)
     
     print(f"Scraped data for {len(df)} players")
     print(f"Data saved to {output_file}")
