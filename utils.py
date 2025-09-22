@@ -193,6 +193,11 @@ def clean_player_name(name: str) -> str:
     if name in name_mappings:
         name = name_mappings[name]
     
+    # Handle defense/special teams name formatting
+    # ESPN: "Packers D/ST" -> DKSalaries: "Packers"
+    if name.endswith(" D/ST"):
+        name = name.replace(" D/ST", "")
+    
     return name
 
 def normalize_team_name(team_name: str) -> str:

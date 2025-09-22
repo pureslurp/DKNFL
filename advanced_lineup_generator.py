@@ -597,8 +597,143 @@ class AdvancedLineupGenerator:
         if skipped > 0:
             print(f"⚠️  Skipped {skipped} players without DraftKings salary data")
         
+        # Perform player pool validation
+        self._validate_player_pool(dk_clean, merged_df)
+        
         return players
     
+    def _validate_player_pool(self, dk_data: pd.DataFrame, merged_data: pd.DataFrame) -> None:
+        """
+        Validate that key players are included in the merged data based on salary thresholds.
+        Uses DKSalaries as the source of truth and checks for missing players.
+        """
+        print("\n" + "="*60)
+        print("PLAYER POOL VALIDATION")
+        print("="*60)
+        
+        # Define salary thresholds for each position
+        salary_thresholds = {
+            'QB': 5000,
+            'RB': 4500,
+            'WR': 4000,
+            'TE': 3000,
+            'DST': 0  # Will check for at least 10 DSTs regardless of salary
+        }
+        
+        missing_players = {}
+        validation_results = {}
+        
+        for position, threshold in salary_thresholds.items():
+            # Get all players from DKSalaries that meet the salary threshold
+            if position == 'DST':
+                dk_position_players = dk_data[dk_data['Position'] == position]
+                total_dst = len(dk_position_players)
+                validation_results[position] = {
+                    'total_available': total_dst,
+                    'threshold_met': total_dst >= 10,
+                    'required': 10
+                }
+            else:
+                dk_position_players = dk_data[
+                    (dk_data['Position'] == position) & 
+                    (dk_data['Salary'] >= threshold)
+                ]
+                total_meeting_threshold = len(dk_position_players)
+                validation_results[position] = {
+                    'total_available': total_meeting_threshold,
+                    'threshold': threshold,
+                    'threshold_met': total_meeting_threshold > 0
+                }
+            
+            # Get merged players for this position
+            if position == 'DST':
+                merged_position_players = merged_data[merged_data['position_clean'] == position]
+            else:
+                merged_position_players = merged_data[
+                    (merged_data['position_clean'] == position) & 
+                    (merged_data['Salary'] >= threshold)
+                ]
+            
+            merged_count = len(merged_position_players)
+            
+            # Find missing players
+            if position == 'DST':
+                dk_player_names = set(dk_position_players['name_clean'].tolist())
+                merged_player_names = set(merged_position_players['name_clean'].tolist())
+                missing_names = dk_player_names - merged_player_names
+                
+                if missing_names:
+                    missing_players[position] = []
+                    for _, player in dk_position_players.iterrows():
+                        if player['name_clean'] in missing_names:
+                            missing_players[position].append({
+                                'name': player['Name'],
+                                'salary': player['Salary'],
+                                'clean_name': player['name_clean']
+                            })
+            else:
+                dk_player_names = set(dk_position_players['name_clean'].tolist())
+                merged_player_names = set(merged_position_players['name_clean'].tolist())
+                missing_names = dk_player_names - merged_player_names
+                
+                if missing_names:
+                    missing_players[position] = []
+                    for _, player in dk_position_players.iterrows():
+                        if player['name_clean'] in missing_names:
+                            missing_players[position].append({
+                                'name': player['Name'],
+                                'salary': player['Salary'],
+                                'clean_name': player['name_clean']
+                            })
+            
+            # Update validation results
+            validation_results[position]['merged_count'] = merged_count
+            validation_results[position]['missing_count'] = len(missing_players.get(position, []))
+        
+        # Print validation results
+        for position, results in validation_results.items():
+            print(f"\n{position} VALIDATION:")
+            if position == 'DST':
+                print(f"  Total DSTs available: {results['total_available']}")
+                print(f"  Required minimum: {results['required']}")
+                print(f"  Successfully merged: {results['merged_count']}")
+                print(f"  Missing: {results['missing_count']}")
+                
+                if results['missing_count'] > 0:
+                    print(f"  ⚠️  Missing DSTs:")
+                    for player in missing_players[position]:
+                        print(f"    - {player['name']} (${player['salary']})")
+                else:
+                    print(f"  ✅ All DSTs successfully merged")
+                    
+                if not results['threshold_met']:
+                    print(f"  ⚠️  WARNING: Less than {results['required']} DSTs available in DKSalaries")
+            else:
+                print(f"  Salary threshold: ${results['threshold']}")
+                print(f"  Players meeting threshold: {results['total_available']}")
+                print(f"  Successfully merged: {results['merged_count']}")
+                print(f"  Missing: {results['missing_count']}")
+                
+                if results['missing_count'] > 0:
+                    print(f"  ⚠️  Missing {position}s:")
+                    for player in missing_players[position]:
+                        print(f"    - {player['name']} (${player['salary']})")
+                else:
+                    print(f"  ✅ All {position}s above ${results['threshold']} successfully merged")
+        
+        # Overall summary
+        total_missing = sum(results['missing_count'] for results in validation_results.values())
+        print(f"\n" + "="*60)
+        print(f"VALIDATION SUMMARY:")
+        print(f"Total missing players: {total_missing}")
+        
+        if total_missing == 0:
+            print("✅ All key players successfully merged!")
+        else:
+            print(f"⚠️  {total_missing} key players missing from merged data")
+            print("Consider reviewing name matching logic or ESPN projections data")
+        
+        print("="*60 + "\n")
 
     
     def find_optimal_stacks(self, min_salary: int = 10000, max_salary: int = 15000) -> List[Stack]:
@@ -1185,8 +1320,6 @@ class AdvancedLineupGenerator:
             lineups.sort(key=lambda x: x.projected_score, reverse=True)
         
         return lineups
-
-
 
     def _optimize_lineup_for_projected_score(self, lineup: LineUp) -> LineUp:
         """Optimize lineup by trying to maximize the specified score type within salary constraints"""
