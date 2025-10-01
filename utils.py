@@ -67,6 +67,45 @@ TEAM_DICT = {'TB' : 'Buccaneers',
              'HOU' : 'Texans'
     }
 
+def get_team_abbreviation_mapping():
+    """
+    Create a mapping from full team names to abbreviations.
+    """
+    return {
+        'Arizona Cardinals': 'ARI',
+        'Atlanta Falcons': 'ATL', 
+        'Baltimore Ravens': 'BAL',
+        'Buffalo Bills': 'BUF',
+        'Carolina Panthers': 'CAR',
+        'Chicago Bears': 'CHI',
+        'Cincinnati Bengals': 'CIN',
+        'Cleveland Browns': 'CLE',
+        'Dallas Cowboys': 'DAL',
+        'Denver Broncos': 'DEN',
+        'Detroit Lions': 'DET',
+        'Green Bay Packers': 'GB',
+        'Houston Texans': 'HOU',
+        'Indianapolis Colts': 'IND',
+        'Jacksonville Jaguars': 'JAX',
+        'Kansas City Chiefs': 'KC',
+        'Las Vegas Raiders': 'LV',
+        'Los Angeles Chargers': 'LAC',
+        'Los Angeles Rams': 'LAR',
+        'Miami Dolphins': 'MIA',
+        'Minnesota Vikings': 'MIN',
+        'New England Patriots': 'NE',
+        'New Orleans Saints': 'NO',
+        'New York Giants': 'NYG',
+        'New York Jets': 'NYJ',
+        'Philadelphia Eagles': 'PHI',
+        'Pittsburgh Steelers': 'PIT',
+        'San Francisco 49ers': 'SF',
+        'Seattle Seahawks': 'SEA',
+        'Tampa Bay Buccaneers': 'TB',
+        'Tennessee Titans': 'TEN',
+        'Washington Commanders': 'WAS'
+    }
+
 CITY_TO_TEAM = {
              'Tampa Bay' : 'Buccaneers',
              'Seattle' : 'Seahawks',
@@ -160,6 +199,10 @@ def clean_player_name(name: str) -> str:
     # Handle HTML entities and special characters
     name = name.replace('\xa0', ' ')  # Replace non-breaking spaces
     
+    # Normalize Jr./Sr. suffixes to handle variations
+    # This handles cases like "Michael Penix Jr." vs "Michael Penix" and "Kyle Pitts Sr." vs "Kyle Pitts"
+    name = re.sub(r'\s+(Jr\.?|Sr\.?|III|II|IV)$', '', name, flags=re.IGNORECASE)
+    
     # Apply specific player name mappings
     name_mappings = {
         "Travis Etienne": "Travis Etienne Jr.",
@@ -186,7 +229,55 @@ def clean_player_name(name: str) -> str:
         "Gabriel Davis": "Gabe Davis",
         "Chigoziem Okonkwo": "Chig Okonkwo",
         "John Mundt": "Johnny Mundt",
-        "Mar'Keise Irving": "Bucky Irving"
+        "Mar'Keise Irving": "Bucky Irving",
+        "Jaxon Smith-NjigbaJ. Smith-Njigba": "Jaxon Smith-Njigba",
+        "Marvin Harrison Jr.": "Marvin Harrison",
+        "Cam Ward": "Cameron Ward",
+        # Jr./Sr. suffix variations
+        "Jimmy Horn Jr.": "Jimmy Horn",
+        "Harold Fannin Jr.": "Harold Fannin",
+        "John Metchie III": "John Metchie",
+        "Velus Jones Jr.": "Velus Jones",
+        "Russell Gage Jr.": "Russell Gage",
+        "Irv Smith Jr.": "Irv Smith",
+        "Ollie Gordon II": "Ollie Gordon",
+        "Dont'e Thornton Jr.": "Dont'e Thornton",
+        "David Sills V": "David Sills",
+        "Ulysses Bentley IV": "Ulysses Bentley",
+        # Specific name variations
+        "A.J. BrownA.  Brow": "A.J. Brown",
+        "J.J. McCarthyJ.  McCarth": "J.J. McCarthy",
+        "Marquez Valdes-ScantlingM. Valdes-Scantling": "Marquez Valdes-Scantling",
+        "e Thornton": "Dont'e Thornton",
+        # Truncated names from box scores
+        "Amon-Ra St. BrownA. St. Brown": "Amon-Ra St. Brown",
+        "JuJu Smith-SchusterJ. Smith-Schuster": "JuJu Smith-Schuster",
+        "Mo Alie-CoxM. Alie-Cox": "Mo Alie-Cox",
+        "Brevyn Spann-FordB. Spann-Ford": "Brevyn Spann-Ford",
+        # Missing first names
+        "Marr Chase": "Ja'Marr Chase",
+        "Von Achane": "De'Von Achane",
+        # Additional name mappings from user
+        "Marquise Brown": "Hollywood Brown",
+        "Dale Robinson": "Wan'Dale Robinson", 
+        "Andre Swift": "D'Andre Swift",
+        "Ray Ray McCloud": "Ray-Ray McCloud",
+        "Keise Irving": "Bucky Irving",
+        "Cameron Skattebo": "Cam Skattebo",
+        "Kenny Gainwell": "Kenneth Gainwell",
+        # Additional name mappings from user
+        "AJ Dillon": "A.J. Dillon",
+        "Jacory Merritt": "Jacory Croskey-Merritt",
+        "Christopher Rodriguez": "Chris Rodriguez",
+        "Tavion Sanders": "Ja'Tavion Sanders",
+        "quavious Marks": "Woody Marks",
+        "Tre Harris": "Tre' Harris",
+        "Christopher Brooks": "Chris Brooks",
+        # Final batch of name mappings
+        "Nick Westbrook": "Nick Westbrook-Ikhine",
+        "Mahn Davis": "Ray Davis",
+        "Wayne Eskridge": "Dee Eskridge",
+        "Chatarius Atwell": "Tutu Atwell"
     }
     
     # Apply name mapping if exists
@@ -198,7 +289,8 @@ def clean_player_name(name: str) -> str:
     if name.endswith(" D/ST"):
         name = name.replace(" D/ST", "")
     
-    return name
+    # Normalize to lowercase for consistent matching
+    return name.lower()
 
 def normalize_team_name(team_name: str) -> str:
     """

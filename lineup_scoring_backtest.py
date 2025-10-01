@@ -46,6 +46,20 @@ class LineupScoringBacktest:
         
         return lineups_df, actual_df
     
+    def extract_home_away(self, game_info: str, team: str) -> str:
+        """Extract home/away status from game info"""
+        if pd.isna(game_info) or pd.isna(team):
+            return ""
+        try:
+            teams = game_info.split(' ')[0].split('@')
+            if len(teams) == 2:
+                away_team = teams[0]
+                home_team = teams[1]
+                return "Away" if team == away_team else "Home"
+        except:
+            pass
+        return ""
+    
     def extract_player_names_from_lineup(self, lineup_row: pd.Series) -> List[str]:
         """Extract clean player names from a lineup row"""
         positions = ['QB', 'RB1', 'RB2', 'WR1', 'WR2', 'WR3', 'TE', 'FLEX', 'DST']
@@ -105,9 +119,11 @@ class LineupScoringBacktest:
                 'projected_correlation': np.nan,
                 'risk_adjusted_correlation': np.nan,
                 'boom_correlation': np.nan,
+                'quality_correlation': np.nan,
                 'projected_spearman': np.nan,
                 'risk_adjusted_spearman': np.nan,
-                'boom_spearman': np.nan
+                'boom_spearman': np.nan,
+                'quality_spearman': np.nan
             }
             
             # Calculate actual scores for each lineup
@@ -115,6 +131,7 @@ class LineupScoringBacktest:
             projected_scores = []
             risk_adjusted_scores = []
             boom_scores = []
+            quality_scores = []
             
             for idx, lineup in lineups_df.iterrows():
                 players = self.extract_player_names_from_lineup(lineup)
@@ -125,6 +142,7 @@ class LineupScoringBacktest:
                     projected_scores.append(lineup['Projected_Score'])
                     risk_adjusted_scores.append(lineup['Risk_Adjusted_Score'])
                     boom_scores.append(lineup['Boom_Score'])
+                    quality_scores.append(lineup['Quality_Score'])
             
             week_results['successful_matches'] = len(actual_scores)
             
@@ -133,23 +151,28 @@ class LineupScoringBacktest:
                 proj_corr, _ = pearsonr(projected_scores, actual_scores)
                 risk_corr, _ = pearsonr(risk_adjusted_scores, actual_scores)
                 boom_corr, _ = pearsonr(boom_scores, actual_scores)
+                quality_corr, _ = pearsonr(quality_scores, actual_scores)
                 
                 # Calculate Spearman correlations (rank-based)
                 proj_spear, _ = spearmanr(projected_scores, actual_scores)
                 risk_spear, _ = spearmanr(risk_adjusted_scores, actual_scores)
                 boom_spear, _ = spearmanr(boom_scores, actual_scores)
+                quality_spear, _ = spearmanr(quality_scores, actual_scores)
                 
                 week_results.update({
                     'projected_correlation': proj_corr,
                     'risk_adjusted_correlation': risk_corr,
                     'boom_correlation': boom_corr,
+                    'quality_correlation': quality_corr,
                     'projected_spearman': proj_spear,
                     'risk_adjusted_spearman': risk_spear,
                     'boom_spearman': boom_spear,
+                    'quality_spearman': quality_spear,
                     'actual_scores': actual_scores,
                     'projected_scores': projected_scores,
                     'risk_adjusted_scores': risk_adjusted_scores,
-                    'boom_scores': boom_scores
+                    'boom_scores': boom_scores,
+                    'quality_scores': quality_scores
                 })
             
             return week_results
@@ -198,7 +221,7 @@ class LineupScoringBacktest:
         print(f"Total weeks attempted: {len(results_df)}")
         
         # Calculate average correlations
-        metrics = ['projected', 'risk_adjusted', 'boom']
+        metrics = ['projected', 'risk_adjusted', 'boom', 'quality']
         correlations = {}
         spearman_correlations = {}
         
@@ -236,13 +259,13 @@ class LineupScoringBacktest:
         print(f"\n" + "-"*60)
         print("WEEK-BY-WEEK BREAKDOWN:")
         print("-"*60)
-        print(f"{'Week':<8} {'Lineups':<8} {'Matched':<8} {'Proj':<8} {'Risk':<8} {'Boom':<8}")
-        print("-"*60)
+        print(f"{'Week':<8} {'Lineups':<8} {'Matched':<8} {'Proj':<8} {'Risk':<8} {'Boom':<8} {'Quality':<8}")
+        print("-"*68)
         
         for _, row in valid_results.iterrows():
             print(f"{row['week']:<8} {row['total_lineups']:<8} {row['successful_matches']:<8} "
                   f"{row['projected_correlation']:<8.3f} {row['risk_adjusted_correlation']:<8.3f} "
-                  f"{row['boom_correlation']:<8.3f}")
+                  f"{row['boom_correlation']:<8.3f} {row['quality_correlation']:<8.3f}")
     
     def create_visualizations(self, results_df: pd.DataFrame):
         """Create correlation visualizations"""
@@ -271,6 +294,7 @@ class LineupScoringBacktest:
         ax1.plot(x_pos, valid_results['projected_correlation'], 'o-', label='Projected Score', linewidth=2, markersize=6)
         ax1.plot(x_pos, valid_results['risk_adjusted_correlation'], 's-', label='Risk Adjusted', linewidth=2, markersize=6)
         ax1.plot(x_pos, valid_results['boom_correlation'], '^-', label='Boom Score', linewidth=2, markersize=6)
+        ax1.plot(x_pos, valid_results['quality_correlation'], 'd-', label='Quality Score', linewidth=2, markersize=6)
         
         ax1.set_title('Correlation by Week (Pearson)', fontweight='bold')
         ax1.set_xlabel('Week')
@@ -282,16 +306,18 @@ class LineupScoringBacktest:
         
         # 2. Average correlations bar chart
         ax2 = axes[0, 1]
-        methods = ['Projected', 'Risk Adjusted', 'Boom']
+        methods = ['Projected', 'Risk Adjusted', 'Boom', 'Quality']
         pearson_avgs = [
             valid_results['projected_correlation'].mean(),
             valid_results['risk_adjusted_correlation'].mean(),
-            valid_results['boom_correlation'].mean()
+            valid_results['boom_correlation'].mean(),
+            valid_results['quality_correlation'].mean()
         ]
         spearman_avgs = [
             valid_results['projected_spearman'].mean(),
             valid_results['risk_adjusted_spearman'].mean(),
-            valid_results['boom_spearman'].mean()
+            valid_results['boom_spearman'].mean(),
+            valid_results['quality_spearman'].mean()
         ]
         
         x = np.arange(len(methods))
@@ -339,10 +365,11 @@ class LineupScoringBacktest:
         data_to_plot = [
             valid_results['projected_correlation'].dropna(),
             valid_results['risk_adjusted_correlation'].dropna(),
-            valid_results['boom_correlation'].dropna()
+            valid_results['boom_correlation'].dropna(),
+            valid_results['quality_correlation'].dropna()
         ]
         
-        ax4.boxplot(data_to_plot, labels=['Projected', 'Risk Adj.', 'Boom'])
+        ax4.boxplot(data_to_plot, labels=['Projected', 'Risk Adj.', 'Boom', 'Quality'])
         ax4.set_title('Distribution of Correlations', fontweight='bold')
         ax4.set_ylabel('Correlation Coefficient')
         ax4.grid(True, alpha=0.3, axis='y')
@@ -655,10 +682,16 @@ class LineupScoringBacktest:
             for pos in positions:
                 if pos in optimal_lineup:
                     player = optimal_lineup[pos]
+                    # Extract home/away from Game Info if available
+                    home_away = ""
+                    if 'Game Info' in player:
+                        home_away = self.extract_home_away(player['Game Info'], player.get('TeamAbbrev', ''))
+                    
                     lineup_data.append({
                         'Position': pos,
                         'Player_Name': player['Name'],
                         'Team': player.get('TeamAbbrev', 'N/A'),
+                        'Home_Away': home_away,
                         'Salary': player['Salary'],
                         'Actual_Points': player['DFS Total'],
                         'Points_Per_Dollar': (player['DFS Total'] / player['Salary']) * 1000 if player['Salary'] > 0 else 0
@@ -669,6 +702,7 @@ class LineupScoringBacktest:
                 'Position': 'TOTAL',
                 'Player_Name': f"Stack: {optimal_lineup.get('stack', 'No stack')}",
                 'Team': f"{len(set(p.get('TeamAbbrev', 'N/A') for p in [optimal_lineup[pos] for pos in positions if pos in optimal_lineup]))} teams",
+                'Home_Away': '',
                 'Salary': optimal_lineup['total_salary'],
                 'Actual_Points': optimal_lineup['total_score'],
                 'Points_Per_Dollar': (optimal_lineup['total_score'] / optimal_lineup['total_salary']) * 1000
@@ -811,6 +845,7 @@ class LineupScoringBacktest:
                     'Projected_Score': lineup.get('Projected_Score', 0),
                     'Risk_Adjusted_Score': lineup.get('Risk_Adjusted_Score', 0),
                     'Boom_Score': lineup.get('Boom_Score', 0),
+                    'Quality_Score': lineup.get('Quality_Score', 0),
                     'Actual_Score': actual_score if not np.isnan(actual_score) else 0,
                     'Score_Difference': (actual_score - lineup.get('Projected_Score', 0)) if not np.isnan(actual_score) else np.nan,
                     'Actual_vs_Projected_Pct': ((actual_score / lineup.get('Projected_Score', 1)) * 100) if not np.isnan(actual_score) and lineup.get('Projected_Score', 0) > 0 else np.nan,
@@ -951,6 +986,127 @@ class LineupScoringBacktest:
                 'error': f'Comparison failed: {str(e)}'
             }
 
+    def compare_stack_generation_methods(self, week_folder: Path) -> Dict:
+        """Compare projected points vs boom score for stack generation using existing AdvancedLineupGenerator"""
+        try:
+            # Import the AdvancedLineupGenerator to reuse its stack generation logic
+            from advanced_lineup_generator import AdvancedLineupGenerator
+            
+            # Load the required data files
+            espn_file = week_folder / "espn_fantasy_projections.csv"
+            if not espn_file.exists():
+                return {"error": "No ESPN projections file found"}
+            
+            projections_df = pd.read_csv(espn_file)
+            
+            # Find DraftKings salary file
+            dk_files = list(week_folder.glob("*DKSalaries*.csv"))
+            dk_data = None
+            if dk_files:
+                dk_data = pd.read_csv(dk_files[0])
+            
+            # Initialize generator with required data
+            generator = AdvancedLineupGenerator(projections_df, dk_data, str(week_folder))
+            
+            # Generate stacks using projected points method (default)
+            generator.optimize_by = "projected_score"
+            projected_stacks = generator.find_optimal_stacks()
+            
+            # Generate stacks using boom score method
+            generator.optimize_by = "boom_score"  
+            boom_stacks = generator.find_optimal_stacks()
+            
+            if not projected_stacks or not boom_stacks:
+                return {"error": "No valid stacks found"}
+            
+            # Load actual scores to calculate performance
+            _, actual_df = self.load_week_data(week_folder)
+            actual_df['Name_Clean'] = actual_df['Name'].apply(clean_player_name)
+            
+            def calculate_stack_actual_score(stack):
+                """Calculate actual DFS score for a stack"""
+                qb_name = clean_player_name(stack.qb.name)
+                wrte_name = clean_player_name(stack.wrte.name)
+                
+                qb_score = 0
+                wrte_score = 0
+                
+                # Find QB actual score
+                qb_matches = actual_df[actual_df['Name_Clean'] == qb_name]
+                if not qb_matches.empty:
+                    qb_score = qb_matches.iloc[0]['DFS Total']
+                
+                # Find WR/TE actual score  
+                wrte_matches = actual_df[actual_df['Name_Clean'] == wrte_name]
+                if not wrte_matches.empty:
+                    wrte_score = wrte_matches.iloc[0]['DFS Total']
+                
+                return qb_score + wrte_score
+            
+            def get_player_actual_score(player_name):
+                """Get actual DFS score for a single player"""
+                clean_name = clean_player_name(player_name)
+                matches = actual_df[actual_df['Name_Clean'] == clean_name]
+                if not matches.empty:
+                    return matches.iloc[0]['DFS Total']
+                return 0
+            
+            # Calculate actual scores for both methods
+            projected_actual_scores = [calculate_stack_actual_score(stack) for stack in projected_stacks]
+            boom_actual_scores = [calculate_stack_actual_score(stack) for stack in boom_stacks]
+            
+            # Calculate metrics
+            projected_avg_actual = np.mean(projected_actual_scores)
+            boom_avg_actual = np.mean(boom_actual_scores)
+            projected_best_actual = max(projected_actual_scores)
+            boom_best_actual = max(boom_actual_scores)
+            
+            # Print detailed breakdown of top stacks
+            print(f"\nTop 4 Projected Stacks for {week_folder.name}:")
+            for i, (stack, score) in enumerate(zip(projected_stacks, projected_actual_scores)):
+                qb_actual = get_player_actual_score(stack.qb.name)
+                wrte_actual = get_player_actual_score(stack.wrte.name)
+                print(f"  {i+1}. {stack.qb.name} + {stack.wrte.name} ({score:.2f} pts)")
+                print(f"     QB: {stack.qb.projected_score:.2f} proj, {stack.qb.boom_score:.2f} boom, {qb_actual:.2f} actual")
+                print(f"     {stack.wrte.position}: {stack.wrte.projected_score:.2f} proj, {stack.wrte.boom_score:.2f} boom, {wrte_actual:.2f} actual")
+                print(f"     Stack: {stack.projected_score:.2f} proj total, {stack.boom_score:.2f} boom total")
+                print(f"     Salary: ${stack.salary:,.0f}")
+            
+            print(f"\nTop 4 Boom Stacks for {week_folder.name}:")
+            for i, (stack, score) in enumerate(zip(boom_stacks, boom_actual_scores)):
+                qb_actual = get_player_actual_score(stack.qb.name)
+                wrte_actual = get_player_actual_score(stack.wrte.name)
+                print(f"  {i+1}. {stack.qb.name} + {stack.wrte.name} ({score:.2f} pts)")
+                print(f"     QB: {stack.qb.projected_score:.2f} proj, {stack.qb.boom_score:.2f} boom, {qb_actual:.2f} actual")
+                print(f"     {stack.wrte.position}: {stack.wrte.projected_score:.2f} proj, {stack.wrte.boom_score:.2f} boom, {wrte_actual:.2f} actual")
+                print(f"     Stack: {stack.projected_score:.2f} proj total, {stack.boom_score:.2f} boom total")
+                print(f"     Salary: ${stack.salary:,.0f}")
+            
+            return {
+                'week': week_folder.name,
+                'projected_method': {
+                    'avg_actual_score': projected_avg_actual,
+                    'best_actual_score': projected_best_actual,
+                    'top_stacks': [{'qb': stack.qb.name, 'wrte': stack.wrte.name, 'actual_score': score} 
+                                 for stack, score in zip(projected_stacks, projected_actual_scores)]
+                },
+                'boom_method': {
+                    'avg_actual_score': boom_avg_actual,
+                    'best_actual_score': boom_best_actual,
+                    'top_stacks': [{'qb': stack.qb.name, 'wrte': stack.wrte.name, 'actual_score': score} 
+                                 for stack, score in zip(boom_stacks, boom_actual_scores)]
+                },
+                'winner': 'projected' if projected_avg_actual > boom_avg_actual else 'boom',
+                'avg_score_difference': abs(projected_avg_actual - boom_avg_actual),
+                'best_score_difference': abs(projected_best_actual - boom_best_actual)
+            }
+            
+        except Exception as e:
+            return {
+                'week': week_folder.name,
+                'error': f'Stack comparison failed: {str(e)}'
+            }
+
 def generate_actual_scoring_csv_for_week(week_name: str, base_dir: str = "/Users/seanraymor/Documents/PythonScripts/DKNFL/2025") -> str:
     """Standalone function to generate actual scoring CSV for a specific week"""
     backtest = LineupScoringBacktest(base_dir)
@@ -1005,10 +1161,16 @@ def main():
     print("="*60)
     
     comparison_results = []
+    stack_comparison_results = []
     for week_folder in week_folders:
         print(f"\nAnalyzing optimal lineup for {week_folder.name}...")
         comparison = backtest.compare_generated_vs_optimal(week_folder)
         comparison_results.append(comparison)
+        
+        # Compare stack generation methods
+        print(f"Comparing stack generation methods for {week_folder.name}...")
+        stack_comparison = backtest.compare_stack_generation_methods(week_folder)
+        stack_comparison_results.append(stack_comparison)
         
         if 'error' not in comparison:
             print(f"Optimal Score: {comparison['optimal_score']:.2f}")
@@ -1041,6 +1203,15 @@ def main():
             print(f"  DST:  {optimal_lineup['DST']['Name']:<20} ({optimal_lineup['DST'].get('TeamAbbrev', 'N/A'):<3}) ${optimal_lineup['DST']['Salary']:>5,} ({optimal_lineup['DST']['DFS Total']:>5.1f} pts)")
         else:
             print(f"Error: {comparison.get('error', 'Unknown error')}")
+        
+        # Display stack comparison results
+        if 'error' not in stack_comparison:
+            print(f"\nStack Generation Comparison for {week_folder.name}:")
+            print(f"  Projected Points Method: Avg {stack_comparison['projected_method']['avg_actual_score']:.2f} pts, Best {stack_comparison['projected_method']['best_actual_score']:.2f} pts")
+            print(f"  Boom Score Method:        Avg {stack_comparison['boom_method']['avg_actual_score']:.2f} pts, Best {stack_comparison['boom_method']['best_actual_score']:.2f} pts")
+            print(f"  Winner: {stack_comparison['winner'].title()} Method (by {stack_comparison['avg_score_difference']:.2f} pts avg)")
+        else:
+            print(f"Stack comparison error: {stack_comparison.get('error', 'Unknown error')}")
     
     # Save comparison results
     if comparison_results:
@@ -1048,6 +1219,47 @@ def main():
         comparison_output = backtest.base_dir.parent / 'optimal_lineup_comparison.csv'
         comparison_df.to_csv(comparison_output, index=False)
         print(f"\nOptimal lineup comparison saved to: {comparison_output}")
+    
+    # Generate stack comparison summary
+    if stack_comparison_results:
+        print("\n" + "="*60)
+        print("STACK GENERATION METHOD COMPARISON SUMMARY")
+        print("="*60)
+        
+        # Filter out weeks with errors
+        valid_stack_comparisons = [sc for sc in stack_comparison_results if 'error' not in sc]
+        
+        if valid_stack_comparisons:
+            # Calculate overall statistics
+            projected_wins = sum(1 for sc in valid_stack_comparisons if sc['winner'] == 'projected')
+            boom_wins = sum(1 for sc in valid_stack_comparisons if sc['winner'] == 'boom')
+            
+            projected_avg_scores = [sc['projected_method']['avg_actual_score'] for sc in valid_stack_comparisons]
+            boom_avg_scores = [sc['boom_method']['avg_actual_score'] for sc in valid_stack_comparisons]
+            
+            projected_best_scores = [sc['projected_method']['best_actual_score'] for sc in valid_stack_comparisons]
+            boom_best_scores = [sc['boom_method']['best_actual_score'] for sc in valid_stack_comparisons]
+            
+            print(f"Weeks analyzed: {len(valid_stack_comparisons)}")
+            print(f"Projected Points Method wins: {projected_wins}")
+            print(f"Boom Score Method wins: {boom_wins}")
+            print(f"Projected Points Method - Avg: {np.mean(projected_avg_scores):.2f} pts, Best: {np.mean(projected_best_scores):.2f} pts")
+            print(f"Boom Score Method - Avg: {np.mean(boom_avg_scores):.2f} pts, Best: {np.mean(boom_best_scores):.2f} pts")
+            
+            # Determine overall winner
+            overall_winner = "Projected Points" if np.mean(projected_avg_scores) > np.mean(boom_avg_scores) else "Boom Score"
+            avg_difference = abs(np.mean(projected_avg_scores) - np.mean(boom_avg_scores))
+            
+            print(f"\n🏆 OVERALL WINNER: {overall_winner} Method")
+            print(f"   Average difference: {avg_difference:.2f} points per week")
+            
+            # Save stack comparison results
+            stack_comparison_df = pd.DataFrame(stack_comparison_results)
+            stack_output = backtest.base_dir.parent / 'stack_generation_comparison.csv'
+            stack_comparison_df.to_csv(stack_output, index=False)
+            print(f"\nStack generation comparison saved to: {stack_output}")
+        else:
+            print("No valid stack comparison data available.")
 
 def draftkings_payout(place: int) -> int:
     """

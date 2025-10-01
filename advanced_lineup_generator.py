@@ -2,6 +2,7 @@
 import argparse
 import copy
 from dataclasses import dataclass
+import os
 import random
 import sys
 from collections import Counter
@@ -31,6 +32,7 @@ class Player:
     opponent: str
     game_info: str = ""
     dk_name: str = ""  # DraftKings name + ID for export
+    home_away: str = ""  # Home or Away status
 
     @classmethod
     def from_espn_data(cls, player_df: Union[pd.DataFrame, pd.Series]) -> 'Player':
@@ -381,6 +383,12 @@ class LineUp:
         """Returns True if there are duplicate players in the lineup"""
         names = [player.name for player in self.players.values()]
         return len(names) != len(set(names))
+    
+    def get_duplicate_players(self) -> List[str]:
+        """Returns a list of player names that appear more than once in the lineup"""
+        names = [player.name for player in self.players.values()]
+        name_counts = Counter(names)
+        return [name for name, count in name_counts.items() if count > 1]
 
     def players_on_same_team(self, threshold=MAX_PLAYERS_PER_TEAM) -> bool:
         """Returns True if too many players are on the same team"""
@@ -403,6 +411,14 @@ class LineUp:
                 self.salary >= 48000 and  # Minimum salary utilization
                 self.team_diversity_score >= 0.3)  # Team diversity requirement
     
+    def validate_no_duplicates(self) -> bool:
+        """Validate that there are no duplicate players in the lineup"""
+        if self.duplicates():
+            duplicate_players = self.get_duplicate_players()
+            print(f"❌ DUPLICATE PLAYERS DETECTED: {duplicate_players}")
+            return False
+        return True
+    
     def is_valid_fast(self, total_salary: float, player_names: set, teams: set, team_counts: dict, has_sub_4000: bool) -> bool:
         """Fast validation using pre-computed values to avoid redundant calculations"""
         return (total_salary <= self.SALARY_CAP and 
@@ -412,7 +428,7 @@ class LineUp:
                 total_salary >= 48000 and  # Minimum salary utilization
                 len(teams) >= 4)  # Team diversity requirement (simplified)
 
-    def get_quality_score(self, optimize_by: str = "projected") -> float:
+    def get_quality_score(self, optimize_by: str = "projected", vulnerability_data: Dict[str, Dict[str, float]] = None) -> float:
         """Returns a composite quality score for the lineup - prioritizing specified score type"""
         if not self.is_valid():
             return 0.0
@@ -430,8 +446,8 @@ class LineUp:
         else:  # default to projected
             primary_score = self.projected_score
         
-        # Primary: Chosen score (65% weight)
-        primary_score_weight = primary_score * 0.65
+        # Primary: Chosen score (60% weight) - reduced to make room for vulnerability
+        primary_score_weight = primary_score * 0.60
         
         # Secondary: Salary utilization bonus (15% weight)
         # Reward lineups that use most of the salary cap, but not as heavily
@@ -446,7 +462,66 @@ class LineUp:
         flex_bonus = self.flex_position_quality * 0.05
         upside_bonus = self.upside_potential_score * 0.05
         
-        return primary_score_weight + salary_bonus + salary_efficiency + diversity_bonus + flex_bonus + upside_bonus
+        # Quinary: Vulnerability bonus (20% max weight) - NEW!
+        vulnerability_bonus = 0.0
+        if vulnerability_data:
+            vulnerability_score = self._calculate_vulnerability_score(vulnerability_data)
+            vulnerability_bonus = vulnerability_score * primary_score * 0.20  # Max 20% of primary score impact
+        
+        return primary_score_weight + salary_bonus + salary_efficiency + diversity_bonus + flex_bonus + upside_bonus + vulnerability_bonus
+
+    def _calculate_vulnerability_score(self, vulnerability_data: Dict[str, Dict[str, float]]) -> float:
+        """Calculate vulnerability score for the lineup (-1.0 to +1.0 scale)"""
+        if not vulnerability_data:
+            return 0.0
+        
+        # Get rankings for each position
+        position_rankings = self._get_position_rankings(vulnerability_data)
+        
+        total_vulnerability = 0.0
+        count = 0
+        
+        for player in self.players.values():
+            if player.position in ['QB', 'WR', 'RB', 'TE']:
+                opponent = player.opponent
+                if opponent in position_rankings[player.position]:
+                    rank = position_rankings[player.position][opponent]
+                    total_teams = len(position_rankings[player.position])
+                    
+                    # Calculate vulnerability score (-1.0 to +1.0)
+                    # rank 1-10 = best defenses (strong) - penalty
+                    # rank 23-32 = worst defenses (vulnerable) - bonus
+                    if rank <= 10:  # Top 10 defenses (strong) - penalty
+                        vulnerability = -1.0 + (rank - 1) * 0.1  # -1.0 to -0.1
+                    elif rank >= total_teams - 9:  # Bottom 10 defenses (vulnerable) - bonus
+                        vulnerability = 0.1 + (total_teams - rank) * 0.1  # 0.1 to 1.0
+                    else:  # Middle teams - neutral
+                        vulnerability = 0.0
+                    
+                    total_vulnerability += vulnerability
+                    count += 1
+        
+        return total_vulnerability / count if count > 0 else 0.0
+
+    def _get_position_rankings(self, vulnerability_data: Dict[str, Dict[str, float]]) -> Dict[str, Dict[str, int]]:
+        """Get rankings for each position (1 = best defense, 32 = worst defense)"""
+        rankings = {}
+        
+        for position in ['QB', 'WR', 'RB', 'TE']:
+            position_data = []
+            for team, data in vulnerability_data.items():
+                points_allowed = data.get(position, 0)
+                position_data.append((team, points_allowed))
+            
+            # Sort by points allowed (ascending - LOWER points = BETTER defense)
+            position_data.sort(key=lambda x: x[1])
+            
+            # Create ranking dictionary (1 = best defense, 32 = worst defense)
+            rankings[position] = {}
+            for rank, (team, points) in enumerate(position_data, 1):
+                rankings[position][team] = rank
+        
+        return rankings
 
     def to_dict(self, optimize_by: str = "projected") -> dict:
         """Convert lineup to dictionary for export"""
@@ -481,7 +556,7 @@ class LineUp:
 class AdvancedLineupGenerator:
     """Advanced lineup generator incorporating pattern analysis learnings"""
     
-    def __init__(self, projections_df: pd.DataFrame, dk_data: pd.DataFrame = None, week_folder: str = None, optimize_by: str = "projected"):
+    def __init__(self, projections_df: pd.DataFrame, dk_data: pd.DataFrame = None, week_folder: str = None, optimize_by: str = "projected", current_week: int = None):
         """
         Initialize the lineup generator
         
@@ -490,12 +565,111 @@ class AdvancedLineupGenerator:
             dk_data: Optional DraftKings data for salary information
             week_folder: Path to the week folder for saving merged data
             optimize_by: Which score to optimize by ("projected", "risk_adjusted", or "boom_score")
+            current_week: Current week number for vulnerability data loading
         """
         self.projections_df = projections_df
         self.dk_data = dk_data
         self.week_folder = week_folder
         self.optimize_by = optimize_by
+        self.current_week = current_week
+        self.vulnerability_data = self._load_vulnerability_data()
         self.players = self._load_players()
+    
+    def _load_vulnerability_data(self) -> Dict[str, Dict[str, float]]:
+        """
+        Load team vulnerability data from individual week files, avoiding future data leakage
+        
+        Returns:
+            Dictionary mapping team -> position -> average points allowed
+        """
+        if self.current_week is None:
+            print("⚠️  No current week provided, using all_weeks data")
+            return self._load_all_weeks_vulnerability_data()
+        
+        print(f"📅 Loading vulnerability data for Week {self.current_week} (historical weeks only)")
+        
+        # Load historical weeks (weeks before current week)
+        historical_weeks = []
+        for week_num in range(1, self.current_week):
+            week_file = f"2025/WEEK{week_num}/position_vs_team_week{week_num}.csv"
+            if os.path.exists(week_file):
+                historical_weeks.append(week_num)
+                print(f"  ✓ Found Week {week_num} data")
+            else:
+                print(f"  ⚠️  Week {week_num} data not found")
+        
+        if not historical_weeks:
+            print("⚠️  No historical week data found, falling back to all_weeks data")
+            return self._load_all_weeks_vulnerability_data()
+        
+        # Load and average the historical weeks
+        vulnerability_data = {}
+        team_totals = {}
+        
+        for week_num in historical_weeks:
+            week_file = f"2025/WEEK{week_num}/position_vs_team_week{week_num}.csv"
+            try:
+                df = pd.read_csv(week_file)
+                
+                for _, row in df.iterrows():
+                    team = row['Team']
+                    if team not in team_totals:
+                        team_totals[team] = {'QB': [], 'WR': [], 'RB': [], 'TE': []}
+                    
+                    # Collect points allowed for each position
+                    for position in ['QB', 'WR', 'RB', 'TE']:
+                        points = float(row.get(position, 0))
+                        if points > 0:  # Only include weeks with actual data
+                            team_totals[team][position].append(points)
+                            
+            except Exception as e:
+                print(f"⚠️  Error loading Week {week_num} data: {e}")
+                continue
+        
+        # Calculate averages for each team and position
+        for team, position_data in team_totals.items():
+            vulnerability_data[team] = {}
+            for position in ['QB', 'WR', 'RB', 'TE']:
+                if position_data[position]:
+                    avg_points = sum(position_data[position]) / len(position_data[position])
+                    vulnerability_data[team][position] = avg_points
+                else:
+                    vulnerability_data[team][position] = 0.0
+        
+        print(f"✓ Loaded vulnerability data for {len(vulnerability_data)} teams from {len(historical_weeks)} historical weeks")
+        return vulnerability_data
+    
+    def _load_all_weeks_vulnerability_data(self) -> Dict[str, Dict[str, float]]:
+        """
+        Fallback method to load from position_vs_team_all_weeks.csv
+        
+        Returns:
+            Dictionary mapping team -> position -> average points allowed
+        """
+        vulnerability_file = "2025/position_vs_team_all_weeks.csv"
+        
+        try:
+            if os.path.exists(vulnerability_file):
+                df = pd.read_csv(vulnerability_file)
+                vulnerability_data = {}
+                
+                for _, row in df.iterrows():
+                    team = row['Team']
+                    vulnerability_data[team] = {
+                        'QB': float(row.get('QB', 0)),
+                        'WR': float(row.get('WR', 0)),
+                        'RB': float(row.get('RB', 0)),
+                        'TE': float(row.get('TE', 0))
+                    }
+                
+                print(f"✓ Loaded vulnerability data for {len(vulnerability_data)} teams from all_weeks file")
+                return vulnerability_data
+            else:
+                print(f"⚠️  Vulnerability file not found: {vulnerability_file}")
+                return {}
+        except Exception as e:
+            print(f"⚠️  Error loading vulnerability data: {e}")
+            return {}
         
     def _load_players(self) -> Dict[str, List[Player]]:
         """Load players from projections data, organized by position"""
@@ -526,6 +700,8 @@ class AdvancedLineupGenerator:
         
         # Clean names using comprehensive cleaning function
         espn_clean['name_clean'] = espn_clean['player_name'].apply(clean_player_name)
+        # Convert ESPN team abbreviations to uppercase to match DraftKings
+        espn_clean['team_clean'] = espn_clean['team'].str.upper()
         # Special handling for D/ST positions - remove "D/ST" suffix after general cleaning
         dst_mask = espn_clean['position'] == 'D/ST'
         espn_clean.loc[dst_mask, 'name_clean'] = espn_clean.loc[dst_mask, 'name_clean'].str.replace(' d/st', '', case=False)
@@ -533,9 +709,10 @@ class AdvancedLineupGenerator:
         dk_clean = self.dk_data.copy()
         dk_clean['name_clean'] = dk_clean['Name'].apply(clean_player_name)
         dk_clean['position_clean'] = dk_clean['Position']
+        dk_clean['team_clean'] = dk_clean['TeamAbbrev']
         
-        # Merge the dataframes on cleaned names AND positions
-        merged_df = pd.merge(espn_clean, dk_clean, on=['name_clean', 'position_clean'], how='inner')
+        # Merge the dataframes on cleaned names, positions, AND team abbreviations
+        merged_df = pd.merge(espn_clean, dk_clean, on=['name_clean', 'position_clean', 'team_clean'], how='inner')
         
         print(f"✓ Found {len(merged_df)} matching players between ESPN and DraftKings")
         
@@ -578,6 +755,9 @@ class AdvancedLineupGenerator:
                 player.salary = float(row['Salary'])
                 if 'Game Info' in row:
                     player.game_info = row['Game Info']
+                    # Extract home/away information using DraftKings team abbreviation
+                    dk_team = row.get('TeamAbbrev', player.team)
+                    player.home_away = self._extract_home_away(row['Game Info'], dk_team)
                 if 'Name + ID' in row:
                     player.dk_name = row['Name + ID']
                 
@@ -735,6 +915,141 @@ class AdvancedLineupGenerator:
         
         print("="*60 + "\n")
 
+    def _is_stack_quality_acceptable(self, qb: Player, wrte: Player) -> bool:
+        """Check if stack should be rejected due to strong opponent defense"""
+        if not self.vulnerability_data:
+            return True
+        
+        # Check if QB and WR/TE are facing the same opponent (same team stack)
+        if qb.opponent != wrte.opponent:
+            # Different opponents - check individual rankings
+            qb_opponent_rank = self._get_opponent_rank(qb.opponent, 'QB')
+            wrte_opponent_rank = self._get_opponent_rank(wrte.opponent, wrte.position)
+            
+            # Reject if both opponents are top 5 in their respective positions
+            if qb_opponent_rank <= 5 and wrte_opponent_rank <= 5:
+                return False
+        else:
+            # Same opponent - check combined QB+WR/TE ranking
+            combined_rank = self._get_combined_stack_opponent_rank(qb.opponent, wrte.position)
+            if combined_rank <= 5:
+                return False
+        
+        return True
+
+    def _get_opponent_rank(self, opponent: str, position: str) -> int:
+        """Get opponent's defensive ranking for a position (1 = best defense, 32 = worst defense)"""
+        # Convert team name to abbreviation
+        opponent_abbrev = self._convert_team_name_to_abbreviation(opponent)
+        
+        if not self.vulnerability_data or opponent_abbrev not in self.vulnerability_data:
+            return 16  # Middle of 32 teams
+        
+        # Get all teams' points allowed for this position
+        position_data = []
+        for team, data in self.vulnerability_data.items():
+            points_allowed = data.get(position, 0)
+            position_data.append((team, points_allowed))
+        
+        # Sort by points allowed (ascending) - LOWER points = BETTER defense
+        position_data.sort(key=lambda x: x[1])
+        
+        # Find opponent's rank (1 = best defense, 32 = worst defense)
+        for rank, (team, points) in enumerate(position_data, 1):
+            if team == opponent_abbrev:
+                return rank
+        
+        return 16  # Default to middle if not found
+
+    def _convert_team_name_to_abbreviation(self, team_name: str) -> str:
+        """Convert team name to standard abbreviation"""
+        # Remove @ prefix for away games and convert to uppercase
+        return team_name.lstrip('@').upper()
+    
+    def _extract_home_away(self, game_info: str, team: str) -> str:
+        """Extract home/away status from game info"""
+        if pd.isna(game_info) or pd.isna(team):
+            return ""
+        try:
+            teams = game_info.split(' ')[0].split('@')
+            if len(teams) == 2:
+                away_team = teams[0]
+                home_team = teams[1]
+                return "Away" if team == away_team else "Home"
+        except:
+            pass
+        return ""
+
+    def _get_combined_stack_opponent_rank(self, opponent: str, wrte_position: str) -> int:
+        """Get opponent's combined QB+WR/TE defensive ranking (1 = best defense, 32 = worst defense)"""
+        # Convert team name to abbreviation
+        opponent_abbrev = self._convert_team_name_to_abbreviation(opponent)
+        
+        if not self.vulnerability_data or opponent_abbrev not in self.vulnerability_data:
+            return 16  # Middle of 32 teams
+        
+        # Get all teams' combined QB+WR/TE points allowed
+        combined_data = []
+        for team, data in self.vulnerability_data.items():
+            qb_points = data.get('QB', 0)
+            wrte_points = data.get(wrte_position, 0)
+            combined_points = qb_points + wrte_points
+            combined_data.append((team, combined_points))
+        
+        # Sort by combined points allowed (ascending) - LOWER points = BETTER defense
+        combined_data.sort(key=lambda x: x[1])
+        
+        # Find opponent's rank (1 = best defense, 32 = worst defense)
+        for rank, (team, points) in enumerate(combined_data, 1):
+            if team == opponent_abbrev:
+                return rank
+        
+        return 16  # Default to middle if not found
+
+    def _get_combined_stack_points_allowed(self, opponent: str, wrte_position: str) -> float:
+        """Get opponent's combined QB+WR/TE points allowed"""
+        # Convert team name to abbreviation
+        opponent_abbrev = self._convert_team_name_to_abbreviation(opponent)
+        
+        if not self.vulnerability_data or opponent_abbrev not in self.vulnerability_data:
+            return 0.0
+        
+        data = self.vulnerability_data[opponent_abbrev]
+        qb_points = data.get('QB', 0)
+        wrte_points = data.get(wrte_position, 0)
+        return qb_points + wrte_points
+
+    def _flag_players_facing_strong_defenses(self, lineups: List[LineUp]) -> None:
+        """Flag players facing top 5 defenses"""
+        if not self.vulnerability_data:
+            return
+        
+        print(f"\n{'='*60}")
+        print(" FLAGGED PLAYERS (Facing Top 5 Defenses)")
+        print(f"{'='*60}")
+        
+        flagged_players = []
+        
+        for lineup in lineups[:5]:  # Check top 5 lineups
+                for position, player in lineup.players.items():
+                    if player.position in ['QB', 'WR', 'RB', 'TE']:
+                        opponent_rank = self._get_opponent_rank(player.opponent, player.position)
+                        if opponent_rank <= 5:
+                            # Convert opponent name to abbreviation for vulnerability data lookup
+                            opponent_abbrev = self._convert_team_name_to_abbreviation(player.opponent)
+                            flagged_players.append({
+                                'player': player.name,
+                                'position': position,
+                                'opponent': player.opponent,
+                                'rank': opponent_rank,
+                                'points_allowed': self.vulnerability_data[opponent_abbrev][player.position]
+                            })
+        
+        if flagged_players:
+            for flag in flagged_players:
+                print(f"  {flag['position']}: {flag['player']} vs {flag['opponent']} (Rank #{flag['rank']} - allows {flag['points_allowed']:.1f} {flag['position']} pts)")
+        else:
+            print("  ✅ No players facing top 5 defenses found")
     
     def find_optimal_stacks(self, min_salary: int = 10000, max_salary: int = 15000) -> List[Stack]:
         """
@@ -775,30 +1090,92 @@ class AdvancedLineupGenerator:
         if not stacks:
             return []
         
+        # Remove duplicate stacks (same QB + WR/TE combination)
+        unique_stacks = []
+        seen_stacks = set()
+        for stack in stacks:
+            stack_key = (stack.qb.name, stack.wrte.name)
+            if stack_key not in seen_stacks:
+                seen_stacks.add(stack_key)
+                unique_stacks.append(stack)
+        
         # Sort by projected score for highest points stacks
-        stacks_by_points = sorted(stacks, key=lambda s: s.boom_score if self.optimize_by == "boom_score" else s.projected_score, reverse=True)
+        stacks_by_points = sorted(unique_stacks, key=lambda s: s.boom_score if self.optimize_by == "boom_score" else s.projected_score, reverse=True)
         
         # Sort by value (points per dollar) for best value stacks
-        stacks_by_value = sorted(stacks, key=lambda s: s.value, reverse=True)
+        stacks_by_value = sorted(unique_stacks, key=lambda s: s.value, reverse=True)
         
-        # Select 2 highest projected point stacks
-        top_points_stacks = stacks_by_points[:2]
+        # Separate stacks by home/away status
+        home_stacks = [s for s in stacks if s.qb.home_away == "Home"]
+        away_stacks = [s for s in stacks if s.qb.home_away == "Away"]
         
-        # Select 2 best value stacks (avoiding duplicates)
-        top_value_stacks = []
+        print(f"Found {len(home_stacks)} home stacks and {len(away_stacks)} away stacks")
+        
+        # Sort home and away stacks separately
+        home_stacks_by_points = sorted(home_stacks, key=lambda s: s.boom_score if self.optimize_by == "boom_score" else s.projected_score, reverse=True)
+        home_stacks_by_value = sorted(home_stacks, key=lambda s: s.value, reverse=True)
+        away_stacks_by_points = sorted(away_stacks, key=lambda s: s.boom_score if self.optimize_by == "boom_score" else s.projected_score, reverse=True)
+        away_stacks_by_value = sorted(away_stacks, key=lambda s: s.value, reverse=True)
+        
+        # Select 4 optimal stacks: 2 by highest projected points + 2 by highest value
+        candidate_stacks = []
+        
+        # Select top 2 stacks by projected points (regardless of home/away)
+        for stack in stacks_by_points[:2]:
+            candidate_stacks.append(stack)
+        
+        # Select top 2 stacks by value (regardless of home/away, avoiding duplicates)
         for stack in stacks_by_value:
-            if stack not in top_points_stacks and len(top_value_stacks) < 2:
-                top_value_stacks.append(stack)
+            if len(candidate_stacks) >= 4:
+                break
+            if stack not in candidate_stacks:
+                candidate_stacks.append(stack)
         
-        # Combine the stacks
-        optimal_stacks = top_points_stacks + top_value_stacks
-        
-        # If we don't have 4 unique stacks, fill with additional high-value stacks
-        if len(optimal_stacks) < 4:
-            remaining_stacks = [s for s in stacks if s not in optimal_stacks]
+        # If we still don't have 4 stacks, fill with any remaining stacks
+        if len(candidate_stacks) < 4:
+            remaining_stacks = [s for s in stacks if s not in candidate_stacks]
             remaining_stacks.sort(key=lambda s: s.value, reverse=True)
-            optimal_stacks.extend(remaining_stacks[:4-len(optimal_stacks)])
+            candidate_stacks.extend(remaining_stacks[:4-len(candidate_stacks)])
         
+        # Now ensure no QB duplication in top 4 stacks and check vulnerability
+        optimal_stacks = []
+        used_qbs = set()
+        
+        for stack in candidate_stacks:
+            if len(optimal_stacks) >= 4:
+                break
+                
+            # Skip if QB already used
+            if stack.qb.name in used_qbs:
+                print(f"❌ REJECTED DUPLICATE QB: {stack.qb.name} + {stack.wrte.name} (QB already used)")
+                continue
+                
+            optimal_stacks.append(stack)
+            used_qbs.add(stack.qb.name)
+            
+            # Flag stacks that face elite defenses but don't reject them
+            if not self._is_stack_quality_acceptable(stack.qb, stack.wrte):
+                print(f"⚠️  FLAGGED STACK: {stack.qb.name} + {stack.wrte.name} vs {stack.qb.opponent}")
+                if stack.qb.opponent == stack.wrte.opponent:
+                    # Same opponent - show combined ranking
+                    combined_rank = self._get_combined_stack_opponent_rank(stack.qb.opponent, stack.wrte.position)
+                    combined_points = self._get_combined_stack_points_allowed(stack.qb.opponent, stack.wrte.position)
+                    print(f"   Warning: {stack.qb.opponent} ranks #{combined_rank} vs combined QB+{stack.wrte.position} (allows {combined_points:.1f} total pts)")
+                else:
+                    # Different opponents - show individual rankings
+                    qb_rank = self._get_opponent_rank(stack.qb.opponent, 'QB')
+                    wrte_rank = self._get_opponent_rank(stack.wrte.opponent, stack.wrte.position)
+                    print(f"   Warning: {stack.qb.opponent} ranks #{qb_rank} vs QB, {stack.wrte.opponent} ranks #{wrte_rank} vs {stack.wrte.position}")
+        
+        # If we still don't have 4 stacks, fill with any remaining stacks (avoiding QB duplication)
+        if len(optimal_stacks) < 4:
+            remaining_stacks = [s for s in stacks if s not in optimal_stacks and s.qb.name not in used_qbs]
+            remaining_stacks.sort(key=lambda s: s.boom_score if self.optimize_by == "boom_score" else s.projected_score, reverse=True)
+            for stack in remaining_stacks[:4-len(optimal_stacks)]:
+                optimal_stacks.append(stack)
+                used_qbs.add(stack.qb.name)
+        
+        print(f"✅ Selected {len(optimal_stacks)} unique QB stacks: {[s.qb.name for s in optimal_stacks]}")
         return optimal_stacks[:4]
     
     def generate_lineup_from_stack(self, stack: Stack, num_lineups: int = 1) -> List[LineUp]:
@@ -1010,7 +1387,7 @@ class AdvancedLineupGenerator:
                 # Continue to next iteration regardless of validation result
         
         # Sort lineups by quality score (best first)
-        lineups.sort(key=lambda l: l.get_quality_score(self.optimize_by), reverse=True)
+        lineups.sort(key=lambda l: l.get_quality_score(self.optimize_by, self.vulnerability_data), reverse=True)
         return lineups
     
     def generate_multiple_lineups(self, num_lineups: int = 20, stacks_per_lineup: int = 1) -> List[LineUp]:
@@ -1042,11 +1419,13 @@ class AdvancedLineupGenerator:
         print(f"Found {len(optimal_stacks)} optimal stacks:")
         print("Top 2 by Projected Points:")
         for i, stack in enumerate(optimal_stacks[:2]):
-            print(f"  {i+1}. {stack} (Value: {stack.value:.2f})")
+            home_away = stack.qb.home_away
+            print(f"  {i+1}. {stack} ({home_away}) (Value: {stack.value:.2f})")
         
         print("Top 2 by Value (Points per Dollar):")
         for i, stack in enumerate(optimal_stacks[2:4]):
-            print(f"  {i+1}. {stack} (Value: {stack.value:.2f})")
+            home_away = stack.qb.home_away
+            print(f"  {i+1}. {stack} ({home_away}) (Value: {stack.value:.2f})")
         
         # Calculate lineups per stack to ensure equal representation
         lineups_per_stack = num_lineups // 4
@@ -1066,7 +1445,7 @@ class AdvancedLineupGenerator:
             generated_for_stack = self.generate_lineup_from_stack(stack, lineups_per_stack * 3)
             
             # Sort by quality and take the best ones for this stack
-            generated_for_stack.sort(key=lambda l: l.get_quality_score(self.optimize_by), reverse=True)
+            generated_for_stack.sort(key=lambda l: l.get_quality_score(self.optimize_by, self.vulnerability_data), reverse=True)
             stack_lineups[stack] = generated_for_stack[:lineups_per_stack]
             all_lineups.extend(stack_lineups[stack])
         
@@ -1079,7 +1458,7 @@ class AdvancedLineupGenerator:
             print(f"  Stack {i+1}: {count} lineups")
         
         # Sort all lineups by quality for final ordering
-        all_lineups.sort(key=lambda l: l.get_quality_score(self.optimize_by), reverse=True)
+        all_lineups.sort(key=lambda l: l.get_quality_score(self.optimize_by, self.vulnerability_data), reverse=True)
         
         # Analyze quality progression
         print("\nQuality Analysis:")
@@ -1133,17 +1512,20 @@ class AdvancedLineupGenerator:
             current_flex = lineup.players["FLEX"]
             flex_candidates = []
             
+            # Get all current player names in the lineup to avoid duplicates
+            current_player_names = {lineup.players[pos].name for pos in lineup.players.keys()}
+            
             # Add WR candidates for FLEX
             flex_candidates.extend([p for p in self.players.get('WR', []) 
-                                  if p.name not in [lineup.players[pos].name for pos in ['WR1', 'WR2', 'WR3']]])
+                                  if p.name not in current_player_names])
             
             # Add RB candidates for FLEX
             flex_candidates.extend([p for p in self.players.get('RB', []) 
-                                  if p.name not in [lineup.players[pos].name for pos in ['RB1', 'RB2']]])
+                                  if p.name not in current_player_names])
             
             # Add TE candidates for FLEX
             flex_candidates.extend([p for p in self.players.get('TE', []) 
-                                  if p.name != lineup.players['TE'].name])
+                                  if p.name not in current_player_names])
             
             # Sort by the specified score type first, then salary (for better utilization)
             if self.optimize_by == "risk_adjusted":
@@ -1160,15 +1542,21 @@ class AdvancedLineupGenerator:
                 test_lineup.players["FLEX"] = candidate
                 test_lineup._clear_cache()  # Clear cache after modifying players
                 
-                if test_lineup.is_valid() and test_lineup.get_quality_score(self.optimize_by) > best_score:
+                if test_lineup.is_valid() and test_lineup.get_quality_score(self.optimize_by, self.vulnerability_data) > best_score:
                     best_lineup = test_lineup
-                    best_score = test_lineup.get_quality_score(self.optimize_by)
+                    best_score = test_lineup.get_quality_score(self.optimize_by, self.vulnerability_data)
             
             # Try to optimize other positions for projected score (but preserve stack)
             best_lineup = self._optimize_lineup_for_projected_score(best_lineup)
             
             # Try to upgrade salary utilization (but preserve stack)
             best_lineup = self._upgrade_lineup_salary(best_lineup)
+            
+            # Validate no duplicates after optimization
+            if not best_lineup.validate_no_duplicates():
+                print(f"❌ DUPLICATE DETECTED in lineup after optimization!")
+                # If duplicates found, use the original lineup
+                best_lineup = lineup
             
             optimized_lineups.append(best_lineup)
         
@@ -1257,6 +1645,9 @@ class AdvancedLineupGenerator:
                     salary_without_player = lineup.salary - player.salary
                     available_salary = 50000 - salary_without_player  # Remaining salary for replacement
 
+                    # Get all current player names in the lineup to avoid duplicates
+                    current_player_names = {lineup.players[pos].name for pos in lineup.players.keys()}
+                    
                     # create a pool of players that are within the available salary range and the same position
                     pool = []
                     if position == "FLEX":
@@ -1265,7 +1656,7 @@ class AdvancedLineupGenerator:
                             pool.extend([p for p in self.players.get(pos, []) 
                                        if p.salary <= available_salary 
                                        and p.name not in oversubscribed_players 
-                                       and p.name != player.name])
+                                       and p.name not in current_player_names])
                     elif position == "DST":
                         # Get QB's opponent team
                         qb_opponent = lineup.players['QB'].opponent
@@ -1274,14 +1665,14 @@ class AdvancedLineupGenerator:
                                    if p.salary <= available_salary 
                                    and p.team != qb_opponent 
                                    and p.name not in oversubscribed_players 
-                                   and p.name != player.name])
+                                   and p.name not in current_player_names])
                     else:
                         # need to remove the number from the position if its there, e.g. RB1 should just be RB
                         position_clean = position.replace("1", "").replace("2", "").replace("3", "")
                         pool = [p for p in self.players.get(position_clean, []) 
                                if p.salary <= available_salary 
                                and p.name not in oversubscribed_players 
-                               and p.name != player.name]
+                               and p.name not in current_player_names]
                     
                     # sort the pool by the specified score type
                     if self.optimize_by == "boom_score":
@@ -1302,6 +1693,38 @@ class AdvancedLineupGenerator:
             for position, replacement_player in replacements:
                 print(f"Replacing {lineup.players[position].name} with {replacement_player.name}")
                 lineup.players[position] = replacement_player
+                lineup._clear_cache()  # Clear cache after modifying players
+            
+            # Validate no duplicates after replacements
+            if not lineup.validate_no_duplicates():
+                print(f"❌ DUPLICATE DETECTED in lineup after ownership optimization!")
+                # Try to fix by removing the duplicate and finding a replacement
+                duplicate_players = lineup.get_duplicate_players()
+                for duplicate_name in duplicate_players:
+                    # Find positions with this duplicate player
+                    duplicate_positions = [pos for pos, player in lineup.players.items() if player.name == duplicate_name]
+                    if len(duplicate_positions) > 1:
+                        # Keep the first occurrence, replace the others
+                        for pos in duplicate_positions[1:]:
+                            # Find a replacement that's not already in the lineup
+                            current_player_names = {lineup.players[p].name for p in lineup.players.keys()}
+                            position_clean = pos.replace("1", "").replace("2", "").replace("3", "")
+                            
+                            if pos == "FLEX":
+                                # For FLEX, try RB, WR, TE
+                                for flex_pos in ["RB", "WR", "TE"]:
+                                    candidates = [p for p in self.players.get(flex_pos, []) 
+                                               if p.name not in current_player_names and p.salary <= lineup.salary]
+                                    if candidates:
+                                        lineup.players[pos] = candidates[0]
+                                        lineup._clear_cache()
+                                        break
+                            else:
+                                candidates = [p for p in self.players.get(position_clean, []) 
+                                           if p.name not in current_player_names and p.salary <= lineup.salary]
+                                if candidates:
+                                    lineup.players[pos] = candidates[0]
+                                    lineup._clear_cache()
                 
         # print out count of each player in the lineups
         player_counts = {}
@@ -1344,19 +1767,22 @@ class AdvancedLineupGenerator:
             current_player = lineup.players[pos]
             current_score = getattr(current_player, score_attr)
             
+            # Get all current player names in the lineup to avoid duplicates
+            current_player_names = {lineup.players[pos_key].name for pos_key in lineup.players.keys()}
+            
             # Get candidates for this position
             if pos.startswith('RB'):
                 candidates = [p for p in self.players.get('RB', []) 
-                            if p.name not in [lineup.players['RB1'].name, lineup.players['RB2'].name]]
+                            if p.name not in current_player_names]
             elif pos.startswith('WR'):
                 candidates = [p for p in self.players.get('WR', []) 
-                            if p.name not in [lineup.players['WR1'].name, lineup.players['WR2'].name, lineup.players['WR3'].name]]
+                            if p.name not in current_player_names]
             elif pos == 'TE':
                 candidates = [p for p in self.players.get('TE', []) 
-                            if p.name != lineup.players['TE'].name]
+                            if p.name not in current_player_names]
             elif pos == 'DST':
                 candidates = [p for p in self.players.get('D/ST', []) 
-                            if p.name != lineup.players['DST'].name]
+                            if p.name not in current_player_names]
             else:
                 continue
             
@@ -1406,28 +1832,31 @@ class AdvancedLineupGenerator:
             current_player = lineup.players[pos]
             current_salary = current_player.salary
             
+            # Get all current player names in the lineup to avoid duplicates
+            current_player_names = {lineup.players[pos_key].name for pos_key in lineup.players.keys()}
+            
             # Get candidates for this position
             if pos.startswith('RB'):
                 candidates = [p for p in self.players.get('RB', []) 
-                            if p.name not in [lineup.players['RB1'].name, lineup.players['RB2'].name]]
+                            if p.name not in current_player_names]
             elif pos.startswith('WR'):
                 candidates = [p for p in self.players.get('WR', []) 
-                            if p.name not in [lineup.players['WR1'].name, lineup.players['WR2'].name, lineup.players['WR3'].name]]
+                            if p.name not in current_player_names]
             elif pos == 'TE':
                 candidates = [p for p in self.players.get('TE', []) 
-                            if p.name != lineup.players['TE'].name]
+                            if p.name not in current_player_names]
             elif pos == 'FLEX':
                 # FLEX can be any position not already used
                 candidates = []
                 candidates.extend([p for p in self.players.get('WR', []) 
-                                 if p.name not in [lineup.players['WR1'].name, lineup.players['WR2'].name, lineup.players['WR3'].name]])
+                                 if p.name not in current_player_names])
                 candidates.extend([p for p in self.players.get('RB', []) 
-                                 if p.name not in [lineup.players['RB1'].name, lineup.players['RB2'].name]])
+                                 if p.name not in current_player_names])
                 candidates.extend([p for p in self.players.get('TE', []) 
-                                 if p.name != lineup.players['TE'].name])
+                                 if p.name not in current_player_names])
             elif pos == 'DST':
                 candidates = [p for p in self.players.get('D/ST', []) 
-                            if p.name != lineup.players['DST'].name]
+                            if p.name not in current_player_names]
             else:
                 continue
             
@@ -1500,7 +1929,7 @@ class AdvancedLineupGenerator:
         print(f"{score_label}: {avg_score:.2f}")
         print(f"Average Salary: ${sum(l.salary for l in lineups)/len(lineups):,.0f}")
         print(f"Average Team Diversity: {sum(len(l.teams) for l in lineups)/len(lineups):.1f}")
-        print(f"Average Quality Score: {sum(l.get_quality_score(self.optimize_by) for l in lineups)/len(lineups):.3f}")
+        print(f"Average Quality Score: {sum(l.get_quality_score(self.optimize_by, self.vulnerability_data) for l in lineups)/len(lineups):.3f}")
         
         # Top 5 lineups
         print(f"\n{'='*80}")
@@ -1526,7 +1955,7 @@ class AdvancedLineupGenerator:
                 score_value = lineup.projected_score
                 score_label = "Projected_Score"
             
-            print(f"   {score_label}: {score_value:.2f} | Salary: ${lineup.salary:,.0f} | Teams: {len(lineup.teams)} | Quality: {lineup.get_quality_score(self.optimize_by):.3f}")
+            print(f"   {score_label}: {score_value:.2f} | Salary: ${lineup.salary:,.0f} | Teams: {len(lineup.teams)} | Quality: {lineup.get_quality_score(self.optimize_by, self.vulnerability_data):.3f}")
     
     def export_lineups(self, lineups: List[LineUp], filename: str = "generated_lineups.csv") -> None:
         """Export lineups to CSV file"""
@@ -1599,7 +2028,7 @@ def main():
         print("⚠️  No DraftKings salary file found. Using projections only...")
     
     # Initialize generator
-    generator = AdvancedLineupGenerator(projections_df, dk_data, week_folder, args.optimize_by)
+    generator = AdvancedLineupGenerator(projections_df, dk_data, week_folder, args.optimize_by, args.week)
     
     # Check for boom score optimization with coarse data (simple check)
     if args.optimize_by == "boom_score":
@@ -1628,6 +2057,9 @@ def main():
     
     # Print summary
     generator.print_lineup_summary(optimized_lineups)
+    
+    # Analyze vulnerability matchups
+    generator._flag_players_facing_strong_defenses(optimized_lineups)
     
     # Export results
     output_path = f"{week_folder}/{args.output}"
