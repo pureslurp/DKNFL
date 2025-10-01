@@ -383,6 +383,12 @@ class LineUp:
         """Returns True if there are duplicate players in the lineup"""
         names = [player.name for player in self.players.values()]
         return len(names) != len(set(names))
+    
+    def get_duplicate_players(self) -> List[str]:
+        """Returns a list of player names that appear more than once in the lineup"""
+        names = [player.name for player in self.players.values()]
+        name_counts = Counter(names)
+        return [name for name, count in name_counts.items() if count > 1]
 
     def players_on_same_team(self, threshold=MAX_PLAYERS_PER_TEAM) -> bool:
         """Returns True if too many players are on the same team"""
@@ -404,6 +410,14 @@ class LineUp:
                 self.has_sub_4000_player() and
                 self.salary >= 48000 and  # Minimum salary utilization
                 self.team_diversity_score >= 0.3)  # Team diversity requirement
+    
+    def validate_no_duplicates(self) -> bool:
+        """Validate that there are no duplicate players in the lineup"""
+        if self.duplicates():
+            duplicate_players = self.get_duplicate_players()
+            print(f"❌ DUPLICATE PLAYERS DETECTED: {duplicate_players}")
+            return False
+        return True
     
     def is_valid_fast(self, total_salary: float, player_names: set, teams: set, team_counts: dict, has_sub_4000: bool) -> bool:
         """Fast validation using pre-computed values to avoid redundant calculations"""
@@ -1076,11 +1090,20 @@ class AdvancedLineupGenerator:
         if not stacks:
             return []
         
+        # Remove duplicate stacks (same QB + WR/TE combination)
+        unique_stacks = []
+        seen_stacks = set()
+        for stack in stacks:
+            stack_key = (stack.qb.name, stack.wrte.name)
+            if stack_key not in seen_stacks:
+                seen_stacks.add(stack_key)
+                unique_stacks.append(stack)
+        
         # Sort by projected score for highest points stacks
-        stacks_by_points = sorted(stacks, key=lambda s: s.boom_score if self.optimize_by == "boom_score" else s.projected_score, reverse=True)
+        stacks_by_points = sorted(unique_stacks, key=lambda s: s.boom_score if self.optimize_by == "boom_score" else s.projected_score, reverse=True)
         
         # Sort by value (points per dollar) for best value stacks
-        stacks_by_value = sorted(stacks, key=lambda s: s.value, reverse=True)
+        stacks_by_value = sorted(unique_stacks, key=lambda s: s.value, reverse=True)
         
         # Separate stacks by home/away status
         home_stacks = [s for s in stacks if s.qb.home_away == "Home"]
@@ -1094,41 +1117,19 @@ class AdvancedLineupGenerator:
         away_stacks_by_points = sorted(away_stacks, key=lambda s: s.boom_score if self.optimize_by == "boom_score" else s.projected_score, reverse=True)
         away_stacks_by_value = sorted(away_stacks, key=lambda s: s.value, reverse=True)
         
-        # Select stacks with home/away balance requirement (at least 2 home stacks)
+        # Select 4 optimal stacks: 2 by highest projected points + 2 by highest value
         candidate_stacks = []
         
-        # First, select 2 best home stacks (1 by points, 1 by value)
-        if len(home_stacks_by_points) > 0:
-            candidate_stacks.append(home_stacks_by_points[0])
-        if len(home_stacks_by_value) > 0 and home_stacks_by_value[0] not in candidate_stacks:
-            candidate_stacks.append(home_stacks_by_value[0])
+        # Select top 2 stacks by projected points (regardless of home/away)
+        for stack in stacks_by_points[:2]:
+            candidate_stacks.append(stack)
         
-        # Fill remaining slots with best available stacks, but ensure we don't exceed 2 away stacks
-        away_count = 0
-        max_away_stacks = 2  # Maximum 2 away stacks allowed
-        
-        # Add remaining home stacks first
-        for stack in home_stacks_by_points[1:] + home_stacks_by_value[1:]:
+        # Select top 2 stacks by value (regardless of home/away, avoiding duplicates)
+        for stack in stacks_by_value:
             if len(candidate_stacks) >= 4:
                 break
             if stack not in candidate_stacks:
                 candidate_stacks.append(stack)
-        
-        # Add away stacks (up to 2)
-        for stack in away_stacks_by_points + away_stacks_by_value:
-            if len(candidate_stacks) >= 4:
-                break
-            if stack not in candidate_stacks and away_count < max_away_stacks:
-                candidate_stacks.append(stack)
-                away_count += 1
-            elif stack not in candidate_stacks and away_count >= max_away_stacks:
-                print(f"❌ REJECTED AWAY STACK: {stack.qb.name} + {stack.wrte.name} (already have 2 away stacks)")
-                # Try to find a better home stack to replace
-                for home_stack in home_stacks:
-                    if home_stack not in candidate_stacks:
-                        print(f"   Replacing with home stack: {home_stack.qb.name} + {home_stack.wrte.name}")
-                        candidate_stacks.append(home_stack)
-                        break
         
         # If we still don't have 4 stacks, fill with any remaining stacks
         if len(candidate_stacks) < 4:
@@ -1169,7 +1170,7 @@ class AdvancedLineupGenerator:
         # If we still don't have 4 stacks, fill with any remaining stacks (avoiding QB duplication)
         if len(optimal_stacks) < 4:
             remaining_stacks = [s for s in stacks if s not in optimal_stacks and s.qb.name not in used_qbs]
-            remaining_stacks.sort(key=lambda s: s.value, reverse=True)
+            remaining_stacks.sort(key=lambda s: s.boom_score if self.optimize_by == "boom_score" else s.projected_score, reverse=True)
             for stack in remaining_stacks[:4-len(optimal_stacks)]:
                 optimal_stacks.append(stack)
                 used_qbs.add(stack.qb.name)
@@ -1511,17 +1512,20 @@ class AdvancedLineupGenerator:
             current_flex = lineup.players["FLEX"]
             flex_candidates = []
             
+            # Get all current player names in the lineup to avoid duplicates
+            current_player_names = {lineup.players[pos].name for pos in lineup.players.keys()}
+            
             # Add WR candidates for FLEX
             flex_candidates.extend([p for p in self.players.get('WR', []) 
-                                  if p.name not in [lineup.players[pos].name for pos in ['WR1', 'WR2', 'WR3']]])
+                                  if p.name not in current_player_names])
             
             # Add RB candidates for FLEX
             flex_candidates.extend([p for p in self.players.get('RB', []) 
-                                  if p.name not in [lineup.players[pos].name for pos in ['RB1', 'RB2']]])
+                                  if p.name not in current_player_names])
             
             # Add TE candidates for FLEX
             flex_candidates.extend([p for p in self.players.get('TE', []) 
-                                  if p.name != lineup.players['TE'].name])
+                                  if p.name not in current_player_names])
             
             # Sort by the specified score type first, then salary (for better utilization)
             if self.optimize_by == "risk_adjusted":
@@ -1547,6 +1551,12 @@ class AdvancedLineupGenerator:
             
             # Try to upgrade salary utilization (but preserve stack)
             best_lineup = self._upgrade_lineup_salary(best_lineup)
+            
+            # Validate no duplicates after optimization
+            if not best_lineup.validate_no_duplicates():
+                print(f"❌ DUPLICATE DETECTED in lineup after optimization!")
+                # If duplicates found, use the original lineup
+                best_lineup = lineup
             
             optimized_lineups.append(best_lineup)
         
@@ -1635,6 +1645,9 @@ class AdvancedLineupGenerator:
                     salary_without_player = lineup.salary - player.salary
                     available_salary = 50000 - salary_without_player  # Remaining salary for replacement
 
+                    # Get all current player names in the lineup to avoid duplicates
+                    current_player_names = {lineup.players[pos].name for pos in lineup.players.keys()}
+                    
                     # create a pool of players that are within the available salary range and the same position
                     pool = []
                     if position == "FLEX":
@@ -1643,7 +1656,7 @@ class AdvancedLineupGenerator:
                             pool.extend([p for p in self.players.get(pos, []) 
                                        if p.salary <= available_salary 
                                        and p.name not in oversubscribed_players 
-                                       and p.name != player.name])
+                                       and p.name not in current_player_names])
                     elif position == "DST":
                         # Get QB's opponent team
                         qb_opponent = lineup.players['QB'].opponent
@@ -1652,14 +1665,14 @@ class AdvancedLineupGenerator:
                                    if p.salary <= available_salary 
                                    and p.team != qb_opponent 
                                    and p.name not in oversubscribed_players 
-                                   and p.name != player.name])
+                                   and p.name not in current_player_names])
                     else:
                         # need to remove the number from the position if its there, e.g. RB1 should just be RB
                         position_clean = position.replace("1", "").replace("2", "").replace("3", "")
                         pool = [p for p in self.players.get(position_clean, []) 
                                if p.salary <= available_salary 
                                and p.name not in oversubscribed_players 
-                               and p.name != player.name]
+                               and p.name not in current_player_names]
                     
                     # sort the pool by the specified score type
                     if self.optimize_by == "boom_score":
@@ -1680,6 +1693,38 @@ class AdvancedLineupGenerator:
             for position, replacement_player in replacements:
                 print(f"Replacing {lineup.players[position].name} with {replacement_player.name}")
                 lineup.players[position] = replacement_player
+                lineup._clear_cache()  # Clear cache after modifying players
+            
+            # Validate no duplicates after replacements
+            if not lineup.validate_no_duplicates():
+                print(f"❌ DUPLICATE DETECTED in lineup after ownership optimization!")
+                # Try to fix by removing the duplicate and finding a replacement
+                duplicate_players = lineup.get_duplicate_players()
+                for duplicate_name in duplicate_players:
+                    # Find positions with this duplicate player
+                    duplicate_positions = [pos for pos, player in lineup.players.items() if player.name == duplicate_name]
+                    if len(duplicate_positions) > 1:
+                        # Keep the first occurrence, replace the others
+                        for pos in duplicate_positions[1:]:
+                            # Find a replacement that's not already in the lineup
+                            current_player_names = {lineup.players[p].name for p in lineup.players.keys()}
+                            position_clean = pos.replace("1", "").replace("2", "").replace("3", "")
+                            
+                            if pos == "FLEX":
+                                # For FLEX, try RB, WR, TE
+                                for flex_pos in ["RB", "WR", "TE"]:
+                                    candidates = [p for p in self.players.get(flex_pos, []) 
+                                               if p.name not in current_player_names and p.salary <= lineup.salary]
+                                    if candidates:
+                                        lineup.players[pos] = candidates[0]
+                                        lineup._clear_cache()
+                                        break
+                            else:
+                                candidates = [p for p in self.players.get(position_clean, []) 
+                                           if p.name not in current_player_names and p.salary <= lineup.salary]
+                                if candidates:
+                                    lineup.players[pos] = candidates[0]
+                                    lineup._clear_cache()
                 
         # print out count of each player in the lineups
         player_counts = {}
@@ -1722,19 +1767,22 @@ class AdvancedLineupGenerator:
             current_player = lineup.players[pos]
             current_score = getattr(current_player, score_attr)
             
+            # Get all current player names in the lineup to avoid duplicates
+            current_player_names = {lineup.players[pos_key].name for pos_key in lineup.players.keys()}
+            
             # Get candidates for this position
             if pos.startswith('RB'):
                 candidates = [p for p in self.players.get('RB', []) 
-                            if p.name not in [lineup.players['RB1'].name, lineup.players['RB2'].name]]
+                            if p.name not in current_player_names]
             elif pos.startswith('WR'):
                 candidates = [p for p in self.players.get('WR', []) 
-                            if p.name not in [lineup.players['WR1'].name, lineup.players['WR2'].name, lineup.players['WR3'].name]]
+                            if p.name not in current_player_names]
             elif pos == 'TE':
                 candidates = [p for p in self.players.get('TE', []) 
-                            if p.name != lineup.players['TE'].name]
+                            if p.name not in current_player_names]
             elif pos == 'DST':
                 candidates = [p for p in self.players.get('D/ST', []) 
-                            if p.name != lineup.players['DST'].name]
+                            if p.name not in current_player_names]
             else:
                 continue
             
@@ -1784,28 +1832,31 @@ class AdvancedLineupGenerator:
             current_player = lineup.players[pos]
             current_salary = current_player.salary
             
+            # Get all current player names in the lineup to avoid duplicates
+            current_player_names = {lineup.players[pos_key].name for pos_key in lineup.players.keys()}
+            
             # Get candidates for this position
             if pos.startswith('RB'):
                 candidates = [p for p in self.players.get('RB', []) 
-                            if p.name not in [lineup.players['RB1'].name, lineup.players['RB2'].name]]
+                            if p.name not in current_player_names]
             elif pos.startswith('WR'):
                 candidates = [p for p in self.players.get('WR', []) 
-                            if p.name not in [lineup.players['WR1'].name, lineup.players['WR2'].name, lineup.players['WR3'].name]]
+                            if p.name not in current_player_names]
             elif pos == 'TE':
                 candidates = [p for p in self.players.get('TE', []) 
-                            if p.name != lineup.players['TE'].name]
+                            if p.name not in current_player_names]
             elif pos == 'FLEX':
                 # FLEX can be any position not already used
                 candidates = []
                 candidates.extend([p for p in self.players.get('WR', []) 
-                                 if p.name not in [lineup.players['WR1'].name, lineup.players['WR2'].name, lineup.players['WR3'].name]])
+                                 if p.name not in current_player_names])
                 candidates.extend([p for p in self.players.get('RB', []) 
-                                 if p.name not in [lineup.players['RB1'].name, lineup.players['RB2'].name]])
+                                 if p.name not in current_player_names])
                 candidates.extend([p for p in self.players.get('TE', []) 
-                                 if p.name != lineup.players['TE'].name])
+                                 if p.name not in current_player_names])
             elif pos == 'DST':
                 candidates = [p for p in self.players.get('D/ST', []) 
-                            if p.name != lineup.players['DST'].name]
+                            if p.name not in current_player_names]
             else:
                 continue
             
