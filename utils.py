@@ -199,23 +199,12 @@ def clean_player_name(name: str) -> str:
     # Handle HTML entities and special characters
     name = name.replace('\xa0', ' ')  # Replace non-breaking spaces
     
-    # Normalize Jr./Sr. suffixes to handle variations
-    # This handles cases like "Michael Penix Jr." vs "Michael Penix" and "Kyle Pitts Sr." vs "Kyle Pitts"
-    name = re.sub(r'\s+(Jr\.?|Sr\.?|III|II|IV)$', '', name, flags=re.IGNORECASE)
+    # Remove all suffixes (Jr., Sr., II, III, IV, etc.) for consistent matching
+    # This ensures "Kenneth Walker III" and "kenneth walker iii" both become "kenneth walker"
+    name = re.sub(r'\s+(Jr\.?|Sr\.?|III|II|IV|V|VI)$', '', name, flags=re.IGNORECASE)
     
     # Apply specific player name mappings
     name_mappings = {
-        "Travis Etienne": "Travis Etienne Jr.",
-        "Michael Pittman": "Michael Pittman Jr.",
-        "Kenneth Walker": "Kenneth Walker III",
-        "Jeff Wilson": "Jeff Wilson Jr.",
-        "Brian Robinson": "Brian Robinson Jr.",
-        "Odell Beckham": "Odell Beckham Jr.",
-        "Gardner Minshew": "Gardner Minshew II",
-        "Melvin Gordon": "Melvin Gordon III",
-        "Tony Jones": "Tony Jones Jr.",
-        "Pierre Strong": "Pierre Strong Jr.",
-        "Larry Rountree": "Larry Rountree III",
         "Amon-Ra St.": "Amon-Ra St. Brown",
         "Amon-Ra St.BrownA. S": "Amon-Ra St. Brown",
         "Amon-Ra St. BrownA. St. Brow": "Amon-Ra St. Brown",
@@ -231,19 +220,8 @@ def clean_player_name(name: str) -> str:
         "John Mundt": "Johnny Mundt",
         "Mar'Keise Irving": "Bucky Irving",
         "Jaxon Smith-NjigbaJ. Smith-Njigba": "Jaxon Smith-Njigba",
-        "Marvin Harrison Jr.": "Marvin Harrison",
         "Cam Ward": "Cameron Ward",
-        # Jr./Sr. suffix variations
-        "Jimmy Horn Jr.": "Jimmy Horn",
-        "Harold Fannin Jr.": "Harold Fannin",
-        "John Metchie III": "John Metchie",
-        "Velus Jones Jr.": "Velus Jones",
-        "Russell Gage Jr.": "Russell Gage",
-        "Irv Smith Jr.": "Irv Smith",
-        "Ollie Gordon II": "Ollie Gordon",
-        "Dont'e Thornton Jr.": "Dont'e Thornton",
-        "David Sills V": "David Sills",
-        "Ulysses Bentley IV": "Ulysses Bentley",
+        # Note: Suffix handling is now done automatically by regex removal above
         # Specific name variations
         "A.J. BrownA.  Brow": "A.J. Brown",
         "J.J. McCarthyJ.  McCarth": "J.J. McCarthy",

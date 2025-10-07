@@ -14,7 +14,7 @@ import pandas as pd
 from tqdm.auto import tqdm
 
 # Local imports
-from utils import BYE_DICT, CITY_TO_TEAM, TEAM_DICT, TOTAL_DICT, clean_player_name
+from utils import BYE_DICT, CITY_TO_TEAM, TEAM_DICT, TOTAL_DICT, clean_player_name, normalize_team_name
 
 
 @dataclass
@@ -700,8 +700,15 @@ class AdvancedLineupGenerator:
         
         # Clean names using comprehensive cleaning function
         espn_clean['name_clean'] = espn_clean['player_name'].apply(clean_player_name)
-        # Convert ESPN team abbreviations to uppercase to match DraftKings
+        # Normalize ESPN team abbreviations to match DraftKings format
+        # First convert to uppercase, then apply specific mappings
         espn_clean['team_clean'] = espn_clean['team'].str.upper()
+        
+        # Apply specific team abbreviation mappings for ESPN -> DraftKings
+        team_mappings = {
+            'WSH': 'WAS'  # ESPN uses "Wsh" -> "WSH", DraftKings uses "WAS"
+        }
+        espn_clean['team_clean'] = espn_clean['team_clean'].replace(team_mappings)
         # Special handling for D/ST positions - remove "D/ST" suffix after general cleaning
         dst_mask = espn_clean['position'] == 'D/ST'
         espn_clean.loc[dst_mask, 'name_clean'] = espn_clean.loc[dst_mask, 'name_clean'].str.replace(' d/st', '', case=False)
