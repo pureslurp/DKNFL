@@ -1087,12 +1087,13 @@ class AdvancedLineupGenerator:
                         stacks.append(stack)
         
         # Create QB-TE combinations (less common but still valuable)
-        for qb in qbs:
-            for te in tes:
-                if qb.team == te.team:  # Same team stack
-                    stack = Stack(qb, te)
-                    if min_salary <= stack.salary <= max_salary:
-                        stacks.append(stack)
+        # DISABLED: Only allowing WR stacks to avoid TE stack lineup generation issues
+        # for qb in qbs:
+        #     for te in tes:
+        #         if qb.team == te.team:  # Same team stack
+        #             stack = Stack(qb, te)
+        #             if min_salary <= stack.salary <= max_salary:
+        #                 stacks.append(stack)
         
         if not stacks:
             return []
