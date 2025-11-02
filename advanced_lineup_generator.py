@@ -408,7 +408,7 @@ class LineUp:
                 not self.duplicates() and 
                 not self.players_on_same_team() and
                 self.has_sub_4000_player() and
-                self.salary >= 48000 and  # Minimum salary utilization
+                self.salary >= 48500 and  # Minimum salary utilization
                 self.team_diversity_score >= 0.3)  # Team diversity requirement
     
     def validate_no_duplicates(self) -> bool:
@@ -425,7 +425,7 @@ class LineUp:
                 len(player_names) == 9 and  # No duplicates
                 not any(count > self.MAX_PLAYERS_PER_TEAM for count in team_counts.values()) and
                 has_sub_4000 and
-                total_salary >= 48000 and  # Minimum salary utilization
+                total_salary >= 48500 and  # Minimum salary utilization
                 len(teams) >= 4)  # Team diversity requirement (simplified)
 
     def get_quality_score(self, optimize_by: str = "projected", vulnerability_data: Dict[str, Dict[str, float]] = None) -> float:
@@ -1350,7 +1350,7 @@ class AdvancedLineupGenerator:
                     continue
                 
                 # Quick minimum salary check
-                if lineup.salary < 48000:
+                if lineup.salary < 48500:
                     continue
                 
                 # Check for sub-$4000 player (excluding defense)
@@ -1467,6 +1467,21 @@ class AdvancedLineupGenerator:
         
         # Sort all lineups by quality for final ordering
         all_lineups.sort(key=lambda l: l.get_quality_score(self.optimize_by, self.vulnerability_data), reverse=True)
+        
+        # Final validation: Remove any invalid lineups that might have slipped through
+        valid_lineups = []
+        invalid_count = 0
+        for lineup in all_lineups:
+            if lineup.is_valid():
+                valid_lineups.append(lineup)
+            else:
+                invalid_count += 1
+                print(f"❌ REMOVING INVALID LINEUP: Salary=${lineup.salary:,.0f} (should be $48,500-$50,000)")
+        
+        if invalid_count > 0:
+            print(f"⚠️  Removed {invalid_count} invalid lineups from final results")
+        
+        all_lineups = valid_lineups
         
         # Analyze quality progression
         print("\nQuality Analysis:")
@@ -1645,13 +1660,14 @@ class AdvancedLineupGenerator:
         
         # replace the oversubscribed players with the next best players that are not over the ownership threshold
         for lineup in lineups:
-            replacements = []  # Store replacements to apply after iteration
             oversubscribed_players = self._check_ownerships(lineups, ownership_threshold)
+            
+            # Process one replacement at a time to maintain salary and duplicate constraints
             for position, player in lineup.players.items():
                 if player.name in oversubscribed_players:
                     # calculate the salary of the lineup without the oversubscribed player
                     salary_without_player = lineup.salary - player.salary
-                    available_salary = 50000 - salary_without_player  # Remaining salary for replacement
+                    available_salary = LineUp.SALARY_CAP - salary_without_player  # Remaining salary for replacement
 
                     # Get all current player names in the lineup to avoid duplicates
                     current_player_names = {lineup.players[pos].name for pos in lineup.players.keys()}
@@ -1693,46 +1709,18 @@ class AdvancedLineupGenerator:
                     # find the next best player that is not over the ownership threshold
                     if len(pool) > 0:
                         replacement_player = pool[0]
-                        replacements.append((position, replacement_player))
+                        print(f"Replacing {player.name} with {replacement_player.name}")
+                        lineup.players[position] = replacement_player
+                        lineup._clear_cache()  # Clear cache after modifying players
+                        
+                        # Validate immediately after each replacement
+                        if not lineup.is_valid():
+                            print(f"❌ INVALID LINEUP after replacing {player.name} with {replacement_player.name}! Salary: ${lineup.salary:,.0f}")
+                            # Revert the replacement
+                            lineup.players[position] = player
+                            lineup._clear_cache()
                     else:
                         print(f"No replacement player found for {player.name} - available salary: {available_salary}, position: {position}")
-            
-            # Apply all replacements after iteration is complete
-            for position, replacement_player in replacements:
-                print(f"Replacing {lineup.players[position].name} with {replacement_player.name}")
-                lineup.players[position] = replacement_player
-                lineup._clear_cache()  # Clear cache after modifying players
-            
-            # Validate no duplicates after replacements
-            if not lineup.validate_no_duplicates():
-                print(f"❌ DUPLICATE DETECTED in lineup after ownership optimization!")
-                # Try to fix by removing the duplicate and finding a replacement
-                duplicate_players = lineup.get_duplicate_players()
-                for duplicate_name in duplicate_players:
-                    # Find positions with this duplicate player
-                    duplicate_positions = [pos for pos, player in lineup.players.items() if player.name == duplicate_name]
-                    if len(duplicate_positions) > 1:
-                        # Keep the first occurrence, replace the others
-                        for pos in duplicate_positions[1:]:
-                            # Find a replacement that's not already in the lineup
-                            current_player_names = {lineup.players[p].name for p in lineup.players.keys()}
-                            position_clean = pos.replace("1", "").replace("2", "").replace("3", "")
-                            
-                            if pos == "FLEX":
-                                # For FLEX, try RB, WR, TE
-                                for flex_pos in ["RB", "WR", "TE"]:
-                                    candidates = [p for p in self.players.get(flex_pos, []) 
-                                               if p.name not in current_player_names and p.salary <= lineup.salary]
-                                    if candidates:
-                                        lineup.players[pos] = candidates[0]
-                                        lineup._clear_cache()
-                                        break
-                            else:
-                                candidates = [p for p in self.players.get(position_clean, []) 
-                                           if p.name not in current_player_names and p.salary <= lineup.salary]
-                                if candidates:
-                                    lineup.players[pos] = candidates[0]
-                                    lineup._clear_cache()
                 
         # print out count of each player in the lineups
         player_counts = {}
@@ -1882,21 +1870,23 @@ class AdvancedLineupGenerator:
                     test_lineup._clear_cache()  # Clear cache after modifying players
                     
                     if test_lineup.is_valid():
-                        # Only upgrade if the specified score type doesn't decrease significantly
-                        if self.optimize_by == "risk_adjusted":
-                            candidate_score = candidate.risk_adjusted_score
-                            current_score = current_player.risk_adjusted_score
-                        elif self.optimize_by == "boom_score":
-                            candidate_score = candidate.boom_score
-                            current_score = current_player.boom_score
-                        else:  # default to projected
-                            candidate_score = candidate.projected_score
-                            current_score = current_player.projected_score
-                        
-                        if candidate_score >= current_score * 0.9:  # Allow 10% decrease for salary upgrade
-                            best_lineup = test_lineup
-                            available_salary -= salary_increase
-                            break  # Move to next position
+                        # Double-check that the final salary is within bounds
+                        if test_lineup.salary <= LineUp.SALARY_CAP and test_lineup.salary >= 48500:
+                            # Only upgrade if the specified score type doesn't decrease significantly
+                            if self.optimize_by == "risk_adjusted":
+                                candidate_score = candidate.risk_adjusted_score
+                                current_score = current_player.risk_adjusted_score
+                            elif self.optimize_by == "boom_score":
+                                candidate_score = candidate.boom_score
+                                current_score = current_player.boom_score
+                            else:  # default to projected
+                                candidate_score = candidate.projected_score
+                                current_score = current_player.projected_score
+                            
+                            if candidate_score >= current_score * 0.9:  # Allow 10% decrease for salary upgrade
+                                best_lineup = test_lineup
+                                available_salary -= salary_increase
+                                break  # Move to next position
         
         return best_lineup
     
