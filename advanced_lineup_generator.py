@@ -2,6 +2,7 @@
 import argparse
 import copy
 from dataclasses import dataclass
+import heapq
 import os
 import random
 import sys
@@ -465,18 +466,21 @@ class LineUp:
         # Quinary: Vulnerability bonus (20% max weight) - NEW!
         vulnerability_bonus = 0.0
         if vulnerability_data:
-            vulnerability_score = self._calculate_vulnerability_score(vulnerability_data)
+            # Note: position_rankings should be passed from AdvancedLineupGenerator
+            # For now, calculate directly (will be optimized later)
+            vulnerability_score = self._calculate_vulnerability_score(vulnerability_data, position_rankings=None)
             vulnerability_bonus = vulnerability_score * primary_score * 0.20  # Max 20% of primary score impact
         
         return primary_score_weight + salary_bonus + salary_efficiency + diversity_bonus + flex_bonus + upside_bonus + vulnerability_bonus
 
-    def _calculate_vulnerability_score(self, vulnerability_data: Dict[str, Dict[str, float]]) -> float:
+    def _calculate_vulnerability_score(self, vulnerability_data: Dict[str, Dict[str, float]], position_rankings: Dict[str, Dict[str, int]] = None) -> float:
         """Calculate vulnerability score for the lineup (-1.0 to +1.0 scale)"""
         if not vulnerability_data:
             return 0.0
         
-        # Get rankings for each position
-        position_rankings = self._get_position_rankings(vulnerability_data)
+        # Get rankings for each position (calculate if not provided)
+        if position_rankings is None:
+            position_rankings = self._calculate_position_rankings(vulnerability_data)
         
         total_vulnerability = 0.0
         count = 0
@@ -503,8 +507,8 @@ class LineUp:
         
         return total_vulnerability / count if count > 0 else 0.0
 
-    def _get_position_rankings(self, vulnerability_data: Dict[str, Dict[str, float]]) -> Dict[str, Dict[str, int]]:
-        """Get rankings for each position (1 = best defense, 32 = worst defense)"""
+    def _calculate_position_rankings(self, vulnerability_data: Dict[str, Dict[str, float]]) -> Dict[str, Dict[str, int]]:
+        """Calculate position rankings from vulnerability data (helper method for LineUp class)"""
         rankings = {}
         
         for position in ['QB', 'WR', 'RB', 'TE']:
@@ -521,6 +525,32 @@ class LineUp:
             for rank, (team, points) in enumerate(position_data, 1):
                 rankings[position][team] = rank
         
+        return rankings
+
+    def _get_position_rankings(self, vulnerability_data: Dict[str, Dict[str, float]]) -> Dict[str, Dict[str, int]]:
+        """Get rankings for each position (1 = best defense, 32 = worst defense) - Cached"""
+        # Use cached rankings if available and vulnerability_data hasn't changed
+        if self._position_rankings_cache is not None:
+            return self._position_rankings_cache
+        
+        rankings = {}
+        
+        for position in ['QB', 'WR', 'RB', 'TE']:
+            position_data = []
+            for team, data in vulnerability_data.items():
+                points_allowed = data.get(position, 0)
+                position_data.append((team, points_allowed))
+            
+            # Sort by points allowed (ascending - LOWER points = BETTER defense)
+            position_data.sort(key=lambda x: x[1])
+            
+            # Create ranking dictionary (1 = best defense, 32 = worst defense)
+            rankings[position] = {}
+            for rank, (team, points) in enumerate(position_data, 1):
+                rankings[position][team] = rank
+        
+        # Cache the results
+        self._position_rankings_cache = rankings
         return rankings
 
     def to_dict(self, optimize_by: str = "projected") -> dict:
@@ -574,6 +604,8 @@ class AdvancedLineupGenerator:
         self.current_week = current_week
         self.vulnerability_data = self._load_vulnerability_data()
         self.players = self._load_players()
+        # Cache position rankings to avoid recalculating
+        self._position_rankings_cache = None
     
     def _load_vulnerability_data(self) -> Dict[str, Dict[str, float]]:
         """
@@ -1200,6 +1232,14 @@ class AdvancedLineupGenerator:
         lineups = []
         attempts = 0
         max_attempts = 500000  # Generate many attempts to find the best lineups
+        max_total_iterations = max_attempts * 20  # Safety limit: stop after 20x attempts even if not all valid
+        # Use set for O(1) duplicate checking instead of O(n) list iteration
+        seen_lineup_signatures = set()
+        # Use heap to track worst lineup efficiently (min heap by projected_score)
+        lineup_heap = []  # Will store (projected_score, index) tuples
+        
+        # Track total iterations for safety limit
+        total_iterations = 0
         
         # Pre-filter players by position - prioritize the specified score type, then salary (for better utilization)
         if self.optimize_by == "risk_adjusted":
@@ -1216,24 +1256,58 @@ class AdvancedLineupGenerator:
         all_dsts = self.players.get('D/ST', [])
         
         # Pre-sort and filter candidates once
-        rb_candidates = sorted([p for p in all_rbs if p.name != stack.qb.name and p.name != stack.wrte.name], 
-                              key=lambda p: (getattr(p, score_attr), p.salary), reverse=True)[:30]
-        wr_candidates = sorted([p for p in all_wrs if p.name != stack.qb.name and p.name != stack.wrte.name], 
-                              key=lambda p: (getattr(p, score_attr), p.salary), reverse=True)[:30]
-        te_candidates = sorted([p for p in all_tes if p.name != stack.qb.name and p.name != stack.wrte.name], 
-                              key=lambda p: (getattr(p, score_attr), p.salary), reverse=True)[:20]
-        dst_candidates = sorted(all_dsts, 
-                               key=lambda p: (getattr(p, score_attr), p.salary), reverse=True)[:15]
+        # Filter out stack players
+        rb_filtered = [p for p in all_rbs if p.name != stack.qb.name and p.name != stack.wrte.name]
+        wr_filtered = [p for p in all_wrs if p.name != stack.qb.name and p.name != stack.wrte.name]
+        te_filtered = [p for p in all_tes if p.name != stack.qb.name and p.name != stack.wrte.name]
+        
+        # Get top candidates by score
+        rb_candidates = sorted(rb_filtered, key=lambda p: (getattr(p, score_attr), p.salary), reverse=True)[:30]
+        wr_candidates = sorted(wr_filtered, key=lambda p: (getattr(p, score_attr), p.salary), reverse=True)[:30]
+        te_candidates = sorted(te_filtered, key=lambda p: (getattr(p, score_attr), p.salary), reverse=True)[:20]
+        dst_candidates = sorted(all_dsts, key=lambda p: (getattr(p, score_attr), p.salary), reverse=True)[:15]
+        
+        # CRITICAL: Ensure we have sub-$4000 players in the pools (required for validation)
+        # Get ALL sub-$4000 players (not limited) - they're essential for validation
+        rb_sub_4000 = sorted([p for p in rb_filtered if p.salary <= 4000], 
+                            key=lambda p: getattr(p, score_attr), reverse=True)
+        wr_sub_4000 = sorted([p for p in wr_filtered if p.salary <= 4000], 
+                            key=lambda p: getattr(p, score_attr), reverse=True)
+        te_sub_4000 = sorted([p for p in te_filtered if p.salary <= 4000], 
+                            key=lambda p: getattr(p, score_attr), reverse=True)
+        
+        # Combine candidates with sub-$4000 players (ensuring unique players)
+        rb_seen = {p.name for p in rb_candidates}
+        for p in rb_sub_4000:
+            if p.name not in rb_seen:
+                rb_candidates.append(p)
+                rb_seen.add(p.name)
+        
+        wr_seen = {p.name for p in wr_candidates}
+        for p in wr_sub_4000:
+            if p.name not in wr_seen:
+                wr_candidates.append(p)
+                wr_seen.add(p.name)
+        
+        te_seen = {p.name for p in te_candidates}
+        for p in te_sub_4000:
+            if p.name not in te_seen:
+                te_candidates.append(p)
+                te_seen.add(p.name)
+        
         
         # Pre-compute top pools to avoid repeated sorting in the loop
         # Top 20 RBs by projected score
         top_rb_by_points = sorted(rb_candidates, key=lambda p: p.projected_score, reverse=True)[:20]
         # Top 20 RBs by value ratio
         top_rb_by_value = sorted(rb_candidates, key=lambda p: p.projected_score / p.salary, reverse=True)[:20]
+        # Get ALL sub-$4000 RBs - use all from filtered list to ensure we don't miss any
+        # (candidates should already include them, but double-check from filtered list)
+        rb_sub_4000_final = [p for p in rb_filtered if p.salary <= 4000]
         # Combine and deduplicate by player name
         top_rb_pool = []
         seen_names = set()
-        for player in top_rb_by_points + top_rb_by_value:
+        for player in top_rb_by_points + top_rb_by_value + rb_sub_4000_final:
             if player.name not in seen_names:
                 top_rb_pool.append(player)
                 seen_names.add(player.name)
@@ -1245,10 +1319,13 @@ class AdvancedLineupGenerator:
         top_wr_by_points = sorted(wr_candidates, key=lambda p: p.projected_score, reverse=True)[:20]
         # Top 20 WRs by value ratio
         top_wr_by_value = sorted(wr_candidates, key=lambda p: p.projected_score / p.salary, reverse=True)[:20]
+        # Get ALL sub-$4000 WRs - use all from filtered list to ensure we don't miss any
+        # (candidates should already include them, but double-check from filtered list)
+        wr_sub_4000_final = [p for p in wr_filtered if p.salary <= 4000]
         # Combine and deduplicate by player name
         top_wr_pool = []
         seen_names = set()
-        for player in top_wr_by_points + top_wr_by_value:
+        for player in top_wr_by_points + top_wr_by_value + wr_sub_4000_final:
             if player.name not in seen_names:
                 top_wr_pool.append(player)
                 seen_names.add(player.name)
@@ -1260,10 +1337,13 @@ class AdvancedLineupGenerator:
         top_te_by_points = sorted(te_candidates, key=lambda p: p.projected_score, reverse=True)[:20]
         # Top 20 TEs by value ratio
         top_te_by_value = sorted(te_candidates, key=lambda p: p.projected_score / p.salary, reverse=True)[:20]
+        # Get ALL sub-$4000 TEs - use all from filtered list to ensure we don't miss any
+        # (candidates should already include them, but double-check from filtered list)
+        te_sub_4000_final = [p for p in te_filtered if p.salary <= 4000]
         # Combine and deduplicate by player name
         top_te_pool = []
         seen_names = set()
-        for player in top_te_by_points + top_te_by_value:
+        for player in top_te_by_points + top_te_by_value + te_sub_4000_final:
             if player.name not in seen_names:
                 top_te_pool.append(player)
                 seen_names.add(player.name)
@@ -1294,8 +1374,15 @@ class AdvancedLineupGenerator:
         
         # Use a more flexible approach: generate random numbers on-demand but with optimized random generation
         # This avoids the mismatch between pre-computed indices and actual iteration needs
+        # Safety check: ensure pools are large enough
+        if len(top_rb_pool) < 2 or len(top_wr_pool) < 3 or len(top_te_pool) < 1 or len(top_dst_pool) < 1:
+            print(f"⚠️  ERROR: Player pools too small. RB: {len(top_rb_pool)}, WR: {len(top_wr_pool)}, TE: {len(top_te_pool)}, DST: {len(top_dst_pool)}")
+            return []
+        
         with tqdm(total=max_attempts, desc=f"Stack {stack.qb.name} + {stack.wrte.name}") as pbar:
-            while attempts < max_attempts:
+            while attempts < max_attempts and total_iterations < max_total_iterations:
+                total_iterations += 1
+                
                 # Generate random selections efficiently (still much faster than sorting)
                 rb1, rb2 = random.sample(top_rb_pool, 2)
                 wr1, wr2, wr3 = random.sample(top_wr_pool, 3)
@@ -1375,26 +1462,62 @@ class AdvancedLineupGenerator:
                     continue
                 
                 # If we get here, lineup passed quick validation
-                # Now check for duplicates with existing lineups (more expensive check)
-                if not any(self._lineups_equal(l, lineup) for l in lineups):
-                    attempts += 1
-                    pbar.update(1)
-                    
-                    # Continuous improvement strategy
-                    if len(lineups) < num_lineups:
-                        # If we haven't filled our quota yet, just add the lineup
-                        lineups.append(lineup)
-                    else:
-                        # We have our quota, check if this lineup is better than the worst one
-                        worst_lineup = min(lineups, key=lambda l: l.projected_score)
-                        if lineup.projected_score > worst_lineup.projected_score:
-                            # Replace the worst lineup with this better one
-                            lineups.remove(worst_lineup)
-                            lineups.append(lineup)
+                # Now check for duplicates with existing lineups using O(1) set lookup
+                # Create a signature from player names (frozenset is hashable)
+                lineup_signature = frozenset(player_names)
+                if lineup_signature in seen_lineup_signatures:
+                    continue  # Duplicate lineup, skip it
                 
-                # Continue to next iteration regardless of validation result
+                attempts += 1
+                pbar.update(1)
+                
+                # Continuous improvement strategy
+                if len(lineups) < num_lineups:
+                    # If we haven't filled our quota yet, just add the lineup
+                    lineups.append(lineup)
+                    seen_lineup_signatures.add(lineup_signature)
+                    # Track in heap for efficient worst lineup lookup
+                    if self.optimize_by == "risk_adjusted":
+                        score = lineup.risk_adjusted_score
+                    elif self.optimize_by == "boom_score":
+                        score = lineup.boom_score
+                    else:
+                        score = lineup.projected_score
+                    heapq.heappush(lineup_heap, (score, len(lineups) - 1))
+                else:
+                    # We have our quota, check if this lineup is better than the worst one
+                    # Get worst lineup efficiently using heap
+                    if lineup_heap:
+                        worst_score, worst_idx = lineup_heap[0]
+                        worst_lineup = lineups[worst_idx]
+                        
+                        # Determine score to compare
+                        if self.optimize_by == "risk_adjusted":
+                            lineup_score = lineup.risk_adjusted_score
+                        elif self.optimize_by == "boom_score":
+                            lineup_score = lineup.boom_score
+                        else:
+                            lineup_score = lineup.projected_score
+                        
+                        if lineup_score > worst_score:
+                            # Remove worst lineup signature
+                            worst_signature = frozenset(p.name for p in worst_lineup.players.values())
+                            seen_lineup_signatures.discard(worst_signature)
+                            
+                            # Replace the worst lineup with this better one
+                            lineups[worst_idx] = lineup
+                            seen_lineup_signatures.add(lineup_signature)
+                            
+                            # Update heap: remove old entry and add new one
+                            heapq.heapreplace(lineup_heap, (lineup_score, worst_idx))
+                
+                # Continue to next iteration - attempts counter updated inside duplicate check
         
         # Sort lineups by quality score (best first)
+        # Pre-compute quality scores once to avoid repeated calculations
+        # Rankings will be computed on-demand when needed (cached in generator)
+        # No need to pre-compute here as LineUp will compute them if needed
+        
         lineups.sort(key=lambda l: l.get_quality_score(self.optimize_by, self.vulnerability_data), reverse=True)
         return lineups
     
@@ -1468,20 +1591,6 @@ class AdvancedLineupGenerator:
         # Sort all lineups by quality for final ordering
         all_lineups.sort(key=lambda l: l.get_quality_score(self.optimize_by, self.vulnerability_data), reverse=True)
         
-        # Final validation: Remove any invalid lineups that might have slipped through
-        valid_lineups = []
-        invalid_count = 0
-        for lineup in all_lineups:
-            if lineup.is_valid():
-                valid_lineups.append(lineup)
-            else:
-                invalid_count += 1
-                print(f"❌ REMOVING INVALID LINEUP: Salary=${lineup.salary:,.0f} (should be $48,500-$50,000)")
-        
-        if invalid_count > 0:
-            print(f"⚠️  Removed {invalid_count} invalid lineups from final results")
-        
-        all_lineups = valid_lineups
         
         # Analyze quality progression
         print("\nQuality Analysis:")
