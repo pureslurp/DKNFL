@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Optimal Lineup Analysis for 2024 NFL DFS Data
+Optimal Lineup Analysis for 2025 NFL DFS Data
 
 This script finds the optimal lineup for each week using actual scores and analyzes:
 1. Lineup construction patterns
@@ -20,6 +20,7 @@ from collections import defaultdict, Counter
 from pathlib import Path
 import matplotlib.pyplot as plt
 import seaborn as sns
+from utils import clean_player_name
 
 # DraftKings lineup constraints
 DK_SALARY_CAP = 50000
@@ -32,7 +33,7 @@ DK_POSITIONS = {
     'DST': 1
 }
 
-@dataclass
+@dataclass(frozen=True)
 class Player:
     """Player data structure for analysis"""
     name: str
@@ -204,8 +205,9 @@ class OptimalLineup:
 class OptimalLineupAnalyzer:
     """Analyzer for optimal lineup construction patterns"""
     
-    def __init__(self, data_path: str = "2024"):
+    def __init__(self, data_path: str = "2025", max_week: int = 15):
         self.data_path = Path(data_path)
+        self.max_week = max_week
         self.optimal_lineups = {}
         
     def load_week_data(self, week: int) -> pd.DataFrame:
@@ -216,33 +218,18 @@ class OptimalLineupAnalyzer:
             print(f"Week {week} directory not found: {week_dir}")
             return pd.DataFrame()
         
-        # Check for available salary files (prioritize sunday versions)
-        dk_file_sunday = week_dir / f"DKSalaries-Week{week}_sunday.csv"
-        dk_file_regular = week_dir / f"DKSalaries-Week{week}.csv"
+        # Find any file starting with "DKSalaries"
+        dk_files = list(week_dir.glob("DKSalaries*.csv"))
         
-        # Also check for lowercase "week" version (like Week 12)
-        dk_file_sunday_lower = week_dir / f"DKSalaries-week{week}_sunday.csv"
-        dk_file_regular_lower = week_dir / f"DKSalaries-week{week}.csv"
-        
-        # Determine which file to use (prioritize sunday versions)
-        if dk_file_sunday.exists():
-            dk_file = dk_file_sunday
-            file_type = "sunday"
-        elif dk_file_sunday_lower.exists():
-            dk_file = dk_file_sunday_lower
-            file_type = "sunday (lowercase)"
-        elif dk_file_regular.exists():
-            dk_file = dk_file_regular
-            file_type = "regular"
-        elif dk_file_regular_lower.exists():
-            dk_file = dk_file_regular_lower
-            file_type = "regular (lowercase)"
-        else:
+        if not dk_files:
             print(f"No DraftKings salaries file found for Week {week}")
             return pd.DataFrame()
         
+        # Use the first matching file (or most recent if multiple)
+        dk_file = sorted(dk_files)[-1]  # Sort to get consistent behavior
+        
         dk_df = pd.read_csv(dk_file)
-        print(f"Loaded Week {week} {file_type} DraftKings salaries: {len(dk_df)} players")
+        print(f"Loaded Week {week} DraftKings salaries from {dk_file.name}: {len(dk_df)} players")
         
         # Load ACTUAL scores from box_score_debug.csv
         box_score_file = week_dir / "box_score_debug.csv"
@@ -253,16 +240,16 @@ class OptimalLineupAnalyzer:
             # Merge actual scores with DraftKings data
             merged_df = dk_df.copy()
             
-            # Create a mapping of player names to actual scores
+            # Create a mapping of cleaned player names to actual scores
             score_mapping = {}
             for _, row in box_score_df.iterrows():
-                player_name = row['Name']
+                player_name = clean_player_name(row['Name'])
                 actual_score = row['DFS Total']
                 score_mapping[player_name] = actual_score
             
             # Update scores: use actual scores for offensive players, keep AvgPointsPerGame for DSTs
             for idx, row in merged_df.iterrows():
-                player_name = row['Name']
+                player_name = clean_player_name(row['Name'])
                 position = row['Position']
                 
                 if position in ['DST', 'DEF']:
@@ -1545,14 +1532,17 @@ class OptimalLineupAnalyzer:
             return None
     
     def analyze_all_weeks(self) -> Dict[int, OptimalLineup]:
-        """Analyze all available weeks"""
-        print("Finding optimal lineups for all weeks...")
+        """Analyze all available weeks up to max_week"""
+        print(f"Finding optimal lineups for weeks 1-{self.max_week}...")
         
         # Find all week directories
         week_dirs = [d for d in self.data_path.iterdir() if d.is_dir() and d.name.startswith('WEEK')]
         weeks = sorted([int(d.name[4:]) for d in week_dirs])
         
-        print(f"Found weeks: {weeks}")
+        # Filter to only include weeks up to max_week
+        weeks = [w for w in weeks if w <= self.max_week]
+        
+        print(f"Analyzing weeks: {weeks}")
         
         optimal_lineups = {}
         for week in weeks:
@@ -1689,7 +1679,7 @@ class OptimalLineupAnalyzer:
         
         report = []
         report.append("=" * 80)
-        report.append("2024 NFL DFS OPTIMAL LINEUP CONSTRUCTION ANALYSIS")
+        report.append("2025 NFL DFS OPTIMAL LINEUP CONSTRUCTION ANALYSIS")
         report.append("=" * 80)
         report.append("")
         

@@ -1,0 +1,240 @@
+================================================================================
+2025 NFL DFS OPTIMAL LINEUP CONSTRUCTION ANALYSIS
+================================================================================
+
+ANALYSIS SUMMARY:
+- Optimal lineups found: 14
+- Average optimal score: 174.71 points
+- Average salary used: $46,393
+- Average salary utilization: 92.8%
+
+STACK CONSTRUCTION PATTERNS:
+- Average stacks per lineup: 1.07
+- Average stack salary: $13,343
+- Average stack salary %: 28.6%
+- Weeks with stacks: 14/14
+- Stack frequency: 100.0%
+
+POSITION SPENDING PATTERNS:
+- QB: $6,164 (13.3%)
+- RB: $13,743 (29.6%)
+- WR: $19,800 (42.7%)
+- TE: $3,900 (8.4%)
+- FLEX: $0 (0.0%)
+- DST: $2,786 (6.0%)
+
+TEAM DIVERSITY PATTERNS:
+- Average teams per lineup: 7.0
+- Team range: 6 - 8 teams
+
+DEFENSE SELECTION PATTERNS:
+- Average DST salary: $2,786
+- Average DST score: 9.96 points
+- DST vs lineup conflict frequency: 0.0%
+
+FLEX POSITION PATTERNS:
+- WR: 8 times (57.1%)
+- TE: 4 times (28.6%)
+- RB: 2 times (14.3%)
+- Average FLEX salary: $3,493
+- Average FLEX score: 15.88 points
+
+DETAILED LINEUP BREAKDOWNS:
+
+Week 1 - 193.56 points, $46,900
+  QB: Justin Fields (39505702) (NYJ) - $5,400 - 29.52 pts
+  RB: Travis Etienne Jr. (39505827) (JAX) - $5,400 - 21.60 pts
+  RB: Bijan Robinson (39505777) (ATL) - $8,000 - 27.40 pts
+  WR: Garrett Wilson (39506105) (NYJ) - $6,300 - 22.50 pts
+  WR: Emeka Egbuka (39506165) (TB) - $4,600 - 23.60 pts
+  WR: Puka Nacua (39506087) (LAR) - $7,600 - 26.10 pts
+  TE: Juwan Johnson (39506717) (NO) - $3,300 - 15.60 pts
+  FLEX: Kayshon Boutte (39506211) (NE) - $3,800 - 19.30 pts
+  DST: Seahawks  (39507008) (SEA) - $2,500 - 7.94 pts
+  Teams: JAX, ATL, NO, NYJ, TB, LAR, SEA, NE (8 teams)
+  Stacks: 1 (11,700 salary)
+  DST conflict: No
+
+Week 2 - 246.00 points, $44,500
+  QB: Russell Wilson (39971315) (NYG) - $5,100 - 34.30 pts
+  RB: Jonathan Taylor (39971385) (IND) - $6,700 - 32.50 pts
+  RB: James Cook (39971389) (BUF) - $6,400 - 29.50 pts
+  WR: Malik Nabers (39971659) (NYG) - $7,100 - 40.70 pts
+  WR: Rome Odunze (39971721) (CHI) - $4,800 - 34.80 pts
+  WR: Davante Adams (39971681) (LAR) - $5,900 - 25.60 pts
+  TE: Brock Wright (39972291) (DET) - $2,500 - 11.80 pts
+  FLEX: Hunter Renfrow (39971789) (CAR) - $3,400 - 23.80 pts
+  DST: Colts  (39972363) (IND) - $2,600 - 13.00 pts
+  Teams: BUF, IND, CAR, NYG, DET, LAR, CHI (7 teams)
+  Stacks: 1 (12,200 salary)
+  DST conflict: No
+
+Week 3 - 250.84 points, $46,800
+  QB: Jalen Hurts (40058155) (PHI) - $6,800 - 31.04 pts
+  RB: Jonathan Taylor (40058250) (IND) - $7,200 - 35.80 pts
+  RB: Jordan Mason (40058288) (MIN) - $5,400 - 26.60 pts
+  WR: A.J. Brown (40058552) (PHI) - $6,300 - 25.90 pts
+  WR: Tre Tucker (40058680) (LV) - $3,400 - 43.90 pts
+  WR: Nico Collins (40058542) (HOU) - $7,300 - 27.40 pts
+  TE: Hunter Henry (40059040) (NE) - $3,800 - 29.00 pts
+  FLEX: Jake Ferguson (40059032) (DAL) - $4,000 - 21.20 pts
+  DST: Patriots  (40059323) (NE) - $2,600 - 10.00 pts
+  Teams: IND, PHI, DAL, HOU, LV, NE, MIN (7 teams)
+  Stacks: 1 (13,100 salary)
+  DST conflict: No
+
+Week 4 - 170.06 points, $45,400
+  QB: Justin Herbert (40142400) (LAC) - $6,300 - 23.10 pts
+  RB: Jonathan Taylor (40142478) (IND) - $7,500 - 27.03 pts
+  RB: James Cook III (40142482) (BUF) - $7,100 - 24.83 pts
+  WR: Keenan Allen (40142768) (LAC) - $5,300 - 18.80 pts
+  WR: Tre Tucker (40142808) (LV) - $4,200 - 20.73 pts
+  WR: Amon-Ra St. Brown (40142720) (DET) - $7,300 - 23.80 pts
+  TE: George Kittle (40143248) (SF) - $2,500 - 12.50 pts
+  FLEX: Oronde Gadsden II (40143204) (LAC) - $2,600 - 9.60 pts
+  DST: Colts  (40143381) (IND) - $2,600 - 9.67 pts
+  Teams: BUF, IND, DET, SF, LV, LAC (6 teams)
+  Stacks: 1 (11,600 salary)
+  DST conflict: No
+
+Week 5 - 170.08 points, $47,900
+  QB: Justin Herbert (40235684) (LAC) - $6,100 - 20.96 pts
+  RB: Javonte Williams (40235764) (DAL) - $6,200 - 19.40 pts
+  RB: Jonathan Taylor (40235746) (IND) - $8,000 - 23.92 pts
+  WR: Quentin Johnston (40236010) (LAC) - $5,700 - 19.88 pts
+  WR: Malik Nabers (40236136) (NYG) - $3,000 - 15.02 pts
+  WR: Amon-Ra St. Brown (40235976) (DET) - $7,900 - 24.35 pts
+  TE: Darren Waller (40236374) (MIA) - $3,500 - 17.70 pts
+  FLEX: Tre Tucker (40236036) (LV) - $4,700 - 16.60 pts
+  DST: Seahawks  (40236589) (SEA) - $2,800 - 12.25 pts
+  Teams: IND, DAL, NYG, DET, SEA, LV, MIA, LAC (8 teams)
+  Stacks: 1 (11,800 salary)
+  DST conflict: No
+
+Week 6 - 165.11 points, $49,000
+  QB: Baker Mayfield (40307937) (TB) - $6,600 - 21.94 pts
+  RB: James Conner (40308192) (ARI) - $4,000 - 11.10 pts
+  RB: Kyren Williams (40308022) (LAR) - $6,300 - 17.32 pts
+  WR: Emeka Egbuka (40308240) (TB) - $7,200 - 21.68 pts
+  WR: Tyreek Hill (40308388) (MIA) - $3,000 - 14.12 pts
+  WR: Puka Nacua (40308232) (LAR) - $8,700 - 28.60 pts
+  TE: Darren Waller (40308622) (MIA) - $4,000 - 18.25 pts
+  FLEX: Javonte Williams (40308020) (DAL) - $6,400 - 21.50 pts
+  DST: Jaguars  (40308829) (JAX) - $2,800 - 10.60 pts
+  Teams: JAX, DAL, TB, LAR, MIA, ARI (6 teams)
+  Stacks: 1 (13,800 salary)
+  DST conflict: No
+
+Week 7 - 156.18 points, $46,000
+  QB: Dak Prescott (40392270) (DAL) - $6,500 - 22.10 pts
+  RB: Omarion Hampton (40392418) (LAC) - $4,000 - 16.00 pts
+  RB: Jonathan Taylor (40392332) (IND) - $8,800 - 25.67 pts
+  WR: George Pickens (40392580) (DAL) - $7,300 - 21.08 pts
+  WR: Malik Nabers (40392800) (NYG) - $3,000 - 15.02 pts
+  WR: Rome Odunze (40392582) (CHI) - $6,600 - 17.56 pts
+  TE: Darren Waller (40392972) (MIA) - $4,200 - 15.23 pts
+  FLEX: Tyreek Hill (40392910) (MIA) - $3,000 - 14.12 pts
+  DST: Vikings  (40393193) (MIN) - $2,600 - 9.40 pts
+  Teams: IND, DAL, NYG, MIA, MIN, CHI, LAC (7 teams)
+  Stacks: 1 (13,800 salary)
+  DST conflict: No
+
+Week 8 - 157.05 points, $48,500
+  QB: Jalen Hurts (40469965) (PHI) - $6,600 - 21.92 pts
+  RB: Bijan Robinson (40470034) (ATL) - $8,800 - 26.23 pts
+  RB: D'Andre Swift (40470058) (CHI) - $5,900 - 17.25 pts
+  WR: DeVonta Smith (40470286) (PHI) - $5,900 - 15.20 pts
+  WR: Malik Nabers (40470572) (NYG) - $3,000 - 15.02 pts
+  WR: Ja'Marr Chase (40470264) (CIN) - $8,100 - 22.79 pts
+  TE: Dallas Goedert (40470666) (PHI) - $4,200 - 14.35 pts
+  FLEX: Tyreek Hill (40470536) (MIA) - $3,000 - 14.12 pts
+  DST: Texans  (40470877) (HOU) - $3,000 - 10.17 pts
+  Teams: PHI, ATL, NYG, CIN, HOU, MIA, CHI (7 teams)
+  Stacks: 2 (16,700 salary)
+  DST conflict: No
+
+Week 9 - 160.95 points, $46,800
+  QB: Patrick Mahomes (40560894) (KC) - $7,100 - 25.37 pts
+  RB: Cam Skattebo (40561071) (NYG) - $4,000 - 16.09 pts
+  RB: James Cook III (40560977) (BUF) - $7,200 - 21.46 pts
+  WR: Rashee Rice (40561235) (KC) - $7,600 - 24.35 pts
+  WR: Malik Nabers (40561517) (NYG) - $3,000 - 15.02 pts
+  WR: Puka Nacua (40561227) (LAR) - $8,500 - 24.63 pts
+  TE: Albert Okwuegbunam Jr. (40561741) (LV) - $2,500 - 8.60 pts
+  FLEX: Omarion Hampton (40561103) (LAC) - $4,000 - 16.00 pts
+  DST: Texans  (40561892) (HOU) - $2,900 - 9.43 pts
+  Teams: BUF, NYG, KC, LAR, HOU, LV, LAC (7 teams)
+  Stacks: 1 (14,700 salary)
+  DST conflict: No
+
+Week 10 - 156.33 points, $46,400
+  QB: Matthew Stafford (40649919) (LAR) - $6,500 - 21.41 pts
+  RB: Cam Skattebo (40650198) (NYG) - $4,000 - 16.09 pts
+  RB: James Cook III (40649986) (BUF) - $7,500 - 20.84 pts
+  WR: Puka Nacua (40650222) (LAR) - $8,700 - 24.37 pts
+  WR: Malik Nabers (40650564) (NYG) - $3,000 - 15.02 pts
+  WR: Jaxon Smith-Njigba (40650224) (SEA) - $8,600 - 24.50 pts
+  TE: Darren Waller (40650768) (MIA) - $2,500 - 11.42 pts
+  FLEX: Tyreek Hill (40650526) (MIA) - $3,000 - 14.12 pts
+  DST: Patriots  (40650849) (NE) - $2,600 - 8.56 pts
+  Teams: BUF, NYG, LAR, SEA, NE, MIA (6 teams)
+  Stacks: 1 (15,200 salary)
+  DST conflict: No
+
+Week 12 - 159.28 points, $46,600
+  QB: Patrick Mahomes (40835363) (KC) - $6,800 - 22.88 pts
+  RB: Cam Skattebo (40835632) (NYG) - $4,000 - 16.09 pts
+  RB: Jonathan Taylor (40835438) (IND) - $10,000 - 28.89 pts
+  WR: Rashee Rice (40835700) (KC) - $7,700 - 19.28 pts
+  WR: Malik Nabers (40836018) (NYG) - $3,000 - 15.02 pts
+  WR: Drake London (40835704) (ATL) - $7,300 - 21.44 pts
+  TE: Tucker Kraft (40836296) (GB) - $2,500 - 15.40 pts
+  FLEX: Sam LaPorta (40836166) (DET) - $2,500 - 11.88 pts
+  DST: Steelers  (40836368) (PIT) - $2,800 - 8.40 pts
+  Teams: IND, ATL, NYG, DET, KC, PIT, GB (7 teams)
+  Stacks: 1 (14,500 salary)
+  DST conflict: No
+
+Week 13 - 148.29 points, $47,100
+  QB: Sam Darnold (40925156) (SEA) - $5,600 - 16.76 pts
+  RB: Christian McCaffrey (40925221) (SF) - $9,300 - 26.42 pts
+  RB: James Conner (40925373) (ARI) - $4,000 - 11.10 pts
+  WR: Jaxon Smith-Njigba (40925445) (SEA) - $9,500 - 25.46 pts
+  WR: Garrett Wilson (40925707) (NYJ) - $3,000 - 14.21 pts
+  WR: Drake London (40925451) (ATL) - $7,300 - 21.44 pts
+  TE: Albert Okwuegbunam Jr. (40925927) (LV) - $2,500 - 8.60 pts
+  FLEX: Tyreek Hill (40925759) (MIA) - $3,000 - 14.12 pts
+  DST: Texans  (40926078) (HOU) - $2,900 - 10.18 pts
+  Teams: ATL, NYJ, SF, HOU, SEA, LV, MIA, ARI (8 teams)
+  Stacks: 1 (15,100 salary)
+  DST conflict: No
+
+Week 14 - 153.60 points, $47,300
+  QB: Matthew Stafford (41033941) (LAR) - $6,900 - 20.74 pts
+  RB: J.K. Dobbins (41034146) (DEN) - $4,000 - 12.19 pts
+  RB: Jonathan Taylor (41034018) (IND) - $9,300 - 26.05 pts
+  WR: Puka Nacua (41034268) (LAR) - $8,700 - 21.20 pts
+  WR: Garrett Wilson (41034508) (NYJ) - $3,000 - 14.21 pts
+  WR: Drake London (41034274) (ATL) - $7,300 - 21.44 pts
+  TE: Tucker Kraft (41034900) (GB) - $2,500 - 15.40 pts
+  FLEX: Tyreek Hill (41034530) (MIA) - $3,000 - 14.12 pts
+  DST: Steelers  (41034962) (PIT) - $2,600 - 8.25 pts
+  Teams: IND, ATL, NYJ, LAR, DEN, PIT, GB, MIA (8 teams)
+  Stacks: 1 (15,600 salary)
+  DST conflict: No
+
+Week 15 - 158.62 points, $40,300
+  QB: Jameis Winston (41117026) (NYG) - $4,000 - 24.64 pts
+  RB: Cam Skattebo (41117282) (NYG) - $4,000 - 16.09 pts
+  RB: Christian McCaffrey (41117048) (SF) - $9,000 - 25.73 pts
+  WR: Malik Nabers (41117706) (NYG) - $3,000 - 15.02 pts
+  WR: Garrett Wilson (41117728) (NYJ) - $3,000 - 14.21 pts
+  WR: Jaxon Smith-Njigba (41117366) (SEA) - $8,600 - 24.03 pts
+  TE: Tucker Kraft (41117998) (GB) - $2,500 - 15.40 pts
+  FLEX: Sam LaPorta (41117986) (DET) - $2,500 - 11.88 pts
+  DST: Seahawks  (41118161) (SEA) - $3,700 - 11.62 pts
+  Teams: NYG, NYJ, DET, SF, SEA, GB (6 teams)
+  Stacks: 1 (7,000 salary)
+  DST conflict: No
+
+================================================================================

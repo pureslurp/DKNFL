@@ -757,18 +757,28 @@ class AdvancedLineupGenerator:
         
         # Save merged data for debugging
         if len(merged_df) > 0:
+            # Determine which projection column to use (projected_points for coarse mode, projected_score for fine mode)
+            # Use projected_points if it has non-zero values, otherwise use projected_score
+            if 'projected_points' in merged_df.columns and merged_df['projected_points'].sum() > 0:
+                projection_col = 'projected_points'
+            else:
+                projection_col = 'projected_score'
+            
             # Create a clean merged CSV with relevant columns
             merged_export = merged_df[[
                 'player_name',  # ESPN player name
                 'Name + ID',    # DraftKings name + ID
                 'team',         # ESPN team
                 'Salary',       # DraftKings salary
-                'projected_score', 'bust_score', 'boom_score',  # ESPN projections
+                projection_col, 'bust_score', 'boom_score',  # ESPN projections
                 'bust_percentage', 'boom_percentage',           # ESPN percentages
                 'position',     # ESPN position
                 'opponent',     # ESPN opponent
                 'Game Info'     # DraftKings game info
             ]].copy()
+            
+            # Rename the projection column to standardized name
+            merged_export = merged_export.rename(columns={projection_col: 'projected_score'})
             
             # Rename columns for clarity
             merged_export.columns = [
